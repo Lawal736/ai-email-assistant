@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - AI Email Assistant{% endblock %}
+
+{% block extra_css %}
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+    .payment-form {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    
+    .StripeElement {
+        padding: 12px;
+        border: 1px solid #ced4da;
+        border-radius: 0.375rem;
+        background-color: white;
+    }
+    
+    .StripeElement--focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
+    }
+    
+    .StripeElement--invalid {
+        border-color: #dc3545;
+    }
+    
+    .order-summary {
+        background-color: #f8f9fa;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+    }
+    
+    .loading-spinner {
+        display: none;
+    }
+    
+    .payment-methods {
+        margin-bottom: 1.5rem;
+    }
+    
+    .payment-method-option {
+        border: 2px solid #e9ecef;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .payment-method-option:hover {
+        border-color: #6366f1;
+    }
+    
+    .payment-method-option.selected {
+        border-color: #6366f1;
+        background-color: #f8f9ff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-credit-card me-2"></i>
+                        Complete Your Subscription
+                    </h3>
+                </div>
+                
+                <div class="card-body p-4">
+                    <!-- Order Summary -->
+                    <div class="order-summary mb-4">
+                        <h5 class="mb-3">
+                            <i class="fas fa-receipt me-2"></i>
+                            Order Summary
+                        </h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Plan:</strong> {{ plan.name|title }}</p>
+                                <p class="mb-1"><strong>Billing:</strong> {{ billing_period|title }}</p>
+                                <p class="mb-1"><strong>Email Limit:</strong> {{ plan.email_limit }} emails/month</p>
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                <h4 class="text-primary mb-0">
+                                    ${{ "%.2f"|format(plan.price_monthly if billing_period == 'monthly' else plan.price_yearly) }}
+                                    <small class="text-muted">/{{ billing_period }}</small>
+                                </h4>
+                                {% if billing_period == 'yearly' %}
+                                <small class="text-success">
+                                    <i class="fas fa-check me-1"></i>
+                                    Save 17% with yearly billing
+                                </small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Methods -->
+                    <div class="payment-methods">
+                        <h5 class="mb-3">
+                            <i class="fas fa-credit-card me-2"></i>
+                            Payment Method
+                        </h5>
+                        
+                        <div class="payment-method-option selected" data-method="card">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-credit-card fa-2x text-primary me-3"></i>
+                                <div>
+                                    <h6 class="mb-1">Credit or Debit Card</h6>
+                                    <small class="text-muted">Visa, Mastercard, American Express</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Form -->
+                    <form id="payment-form" class="payment-form">
+                        <div class="mb-3">
+                            <label for="card-element" class="form-label">
+                                <i class="fas fa-credit-card me-2"></i>
+                                Card Information
+                            </label>
+                            <div id="card-element"></div>
+                            <div id="card-errors" class="text-danger mt-2" role="alert"></div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">
+                                <i class="fas fa-user me-2"></i>
+                                Name on Card
+                            </label>
+                            <input type="text" class="form-control" id="name" required 
+                                   placeholder="Enter the name on your card">
+                        </div>
+
+                        <div class="mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="save-payment" checked>
+                                <label class="form-check-label" for="save-payment">
+                                    Save this payment method for future use
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" id="submit-button">
+                                <span class="spinner-border spinner-border-sm loading-spinner me-2" role="status"></span>
+                                <i class="fas fa-lock me-2"></i>
+                                Pay ${{ "%.2f"|format(plan.price_monthly if billing_period == 'monthly' else plan.price_yearly) }}
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Security Notice -->
+                    <div class="text-center mt-4">
+                        <small class="text-muted">
+                            <i class="fas fa-shield-alt me-1"></i>
+                            Your payment is secured by Stripe. We never store your card information.
+                        </small>
+                    </div>
+
+                    <!-- Back to Pricing -->
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('pricing') }}" class="text-decoration-none">
+                            <i class="fas fa-arrow-left me-1"></i>
+                            Back to Pricing
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize Stripe
+const stripe = Stripe('{{ stripe_public_key }}');
+const elements = stripe.elements();
+
+// Create card element
+const card = elements.create('card', {
+    style: {
+        base: {
+            fontSize: '16px',
+            color: '#424770',
+            '::placeholder': {
+                color: '#aab7c4',
+            },
+        },
+        invalid: {
+            color: '#9e2146',
+        },
+    },
+});
+
+card.mount('#card-element');
+
+// Handle form submission
+const form = document.getElementById('payment-form');
+const submitButton = document.getElementById('submit-button');
+const loadingSpinner = document.querySelector('.loading-spinner');
+
+form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    
+    // Disable submit button and show loading
+    submitButton.disabled = true;
+    loadingSpinner.style.display = 'inline-block';
+    
+    try {
+        // Create payment method
+        const {paymentMethod, error} = await stripe.createPaymentMethod({
+            type: 'card',
+            card: card,
+            billing_details: {
+                name: document.getElementById('name').value,
+            },
+        });
+        
+        if (error) {
+            const errorElement = document.getElementById('card-errors');
+            errorElement.textContent = error.message;
+            submitButton.disabled = false;
+            loadingSpinner.style.display = 'none';
+            return;
+        }
+        
+        // Send to server
+        const response = await fetch('/payment/process', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                payment_method_id: paymentMethod.id,
+                plan: '{{ plan.name }}',
+                billing_period: '{{ billing_period }}',
+                save_payment: document.getElementById('save-payment').checked
+            }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Redirect to success page
+            window.location.href = '/payment/success?session_id=' + result.session_id;
+        } else {
+            // Show error
+            const errorElement = document.getElementById('card-errors');
+            errorElement.textContent = result.error || 'Payment failed. Please try again.';
+            submitButton.disabled = false;
+            loadingSpinner.style.display = 'none';
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+        const errorElement = document.getElementById('card-errors');
+        errorElement.textContent = 'An unexpected error occurred. Please try again.';
+        submitButton.disabled = false;
+        loadingSpinner.style.display = 'none';
+    }
+});
+
+// Handle card errors
+card.addEventListener('change', ({error}) => {
+    const displayError = document.getElementById('card-errors');
+    if (error) {
+        displayError.textContent = error.message;
+    } else {
+        displayError.textContent = '';
+    }
+});
+
+// Payment method selection
+document.querySelectorAll('.payment-method-option').forEach(option => {
+    option.addEventListener('click', function() {
+        // Remove selected class from all options
+        document.querySelectorAll('.payment-method-option').forEach(opt => {
+            opt.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked option
+        this.classList.add('selected');
+    });
+});
+</script>
+{% endblock %} 

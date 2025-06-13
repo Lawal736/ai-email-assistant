@@ -10,18 +10,22 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         :root {
             --primary-color: #6366f1;
+            --primary-dark: #4f46e5;
             --secondary-color: #8b5cf6;
+            --accent-color: #06b6d4;
             --success-color: #10b981;
             --warning-color: #f59e0b;
             --danger-color: #ef4444;
             --dark-color: #1f2937;
             --light-color: #f9fafb;
-            --border-color: #e5e7eb;
+            --border-color: rgba(255, 255, 255, 0.2);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
         }
         
         * {
@@ -32,100 +36,250 @@
         
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
             min-height: 100vh;
             color: var(--dark-color);
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.3) 0%, transparent 50%);
+            z-index: -1;
+            animation: backgroundShift 20s ease-in-out infinite;
+        }
+        
+        @keyframes backgroundShift {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(1deg); }
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
         
+        /* Glassmorphism Cards */
         .card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            border: none;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
             overflow: hidden;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
         .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 
+                0 20px 60px rgba(0, 0, 0, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
         
         .card-header {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
             border: none;
-            padding: 20px 25px;
+            padding: 24px 28px;
             font-weight: 600;
+            font-size: 1.1rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .card:hover .card-header::before {
+            left: 100%;
+        }
+        
+        /* Modern Buttons */
+        .btn {
+            border-radius: 16px;
+            padding: 12px 28px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+            position: relative;
+            overflow: hidden;
         }
         
         .btn-primary {
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            border: none;
-            border-radius: 12px;
-            padding: 12px 24px;
-            font-weight: 500;
-            transition: all 0.3s ease;
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
         }
         
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
         }
         
+        .btn-outline-primary {
+            background: transparent;
+            border: 2px solid var(--primary-color);
+            color: var(--primary-color);
+        }
+        
+        .btn-outline-primary:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success-color), #059669);
+            color: white;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+        }
+        
+        /* Priority Badges */
         .priority-high {
             background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
+            border-radius: 12px;
+            padding: 6px 12px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .priority-medium {
             background: linear-gradient(135deg, #f59e0b, #d97706);
             color: white;
+            border-radius: 12px;
+            padding: 6px 12px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .priority-low {
             background: linear-gradient(135deg, #10b981, #059669);
             color: white;
+            border-radius: 12px;
+            padding: 6px 12px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
+        /* Email Cards */
         .email-card {
             border-left: 4px solid var(--primary-color);
-            margin-bottom: 15px;
-            transition: all 0.3s ease;
+            margin-bottom: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
         }
         
         .email-card:hover {
             border-left-color: var(--secondary-color);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transform: translateX(4px);
         }
         
+        /* Thread Cards */
+        .thread-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+        }
+        
+        .thread-card:hover {
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .thread-overview-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(15px);
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .thread-overview-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Summary Cards */
         .summary-card {
-            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
-            border: 1px solid var(--border-color);
+            background: linear-gradient(135deg, rgba(248, 250, 252, 0.9), rgba(226, 232, 240, 0.9));
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
         }
         
+        /* Action Items & Recommendations */
         .action-item {
-            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            background: linear-gradient(135deg, rgba(254, 243, 199, 0.9), rgba(253, 230, 138, 0.9));
+            backdrop-filter: blur(10px);
             border: 1px solid #fbbf24;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .action-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(251, 191, 36, 0.2);
         }
         
         .recommendation {
-            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+            background: linear-gradient(135deg, rgba(219, 234, 254, 0.9), rgba(191, 219, 254, 0.9));
+            backdrop-filter: blur(10px);
             border: 1px solid #60a5fa;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
         }
         
+        .recommendation:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(96, 165, 250, 0.2);
+        }
+        
+        /* Loading Animation */
         .loading {
             display: flex;
             justify-content: center;
@@ -134,9 +288,9 @@
         }
         
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
             border-top: 4px solid var(--primary-color);
             border-radius: 50%;
             animation: spin 1s linear infinite;
@@ -147,27 +301,112 @@
             100% { transform: rotate(360deg); }
         }
         
+        /* Modern Navbar */
         .navbar {
             background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
         }
         
+        .navbar-brand {
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .navbar-text .text-success {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .navbar-text i {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        
+        /* Modern Footer */
         .footer {
             background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid var(--border-color);
-            padding: 20px 0;
-            margin-top: 50px;
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            padding: 30px 0;
+            margin-top: 60px;
         }
         
+        /* Analysis Content */
+        .analysis-content {
+            background: linear-gradient(135deg, rgba(248, 250, 252, 0.9), rgba(226, 232, 240, 0.9));
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 24px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .analysis-content h2 {
+            color: var(--dark-color);
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+        }
+        
+        .analysis-content h2:first-child {
+            margin-top: 0;
+        }
+        
+        .analysis-content ul {
+            margin-bottom: 0.75rem;
+        }
+        
+        .analysis-content li {
+            margin-bottom: 0.5rem;
+            padding-left: 0.5rem;
+        }
+        
+        /* Modal Styling */
+        .modal-content {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border-radius: 24px 24px 0 0;
+            border: none;
+        }
+        
+        /* Responsive Design */
         @media (max-width: 768px) {
             .container {
-                padding: 10px;
+                padding: 15px;
             }
             
             .card-header {
-                padding: 15px 20px;
+                padding: 20px 24px;
+            }
+            
+            .btn {
+                padding: 10px 20px;
+                font-size: 0.9rem;
             }
         }
         
@@ -177,24 +416,33 @@
         }
         
         .fallback-summary .summary-section {
-            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid #e2e8f0;
+            background: linear-gradient(135deg, rgba(248, 250, 252, 0.9), rgba(226, 232, 240, 0.9));
+            backdrop-filter: blur(15px);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid var(--glass-border);
         }
         
         .fallback-summary .summary-section h6 {
-            color: #374151;
-            font-size: 1.1rem;
-            margin-bottom: 15px;
+            color: var(--dark-color);
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 20px;
         }
         
         .fallback-summary .list-unstyled li {
-            padding: 8px 0;
-            border-bottom: 1px solid #f3f4f6;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(243, 244, 246, 0.8);
             display: flex;
             align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .fallback-summary .list-unstyled li:hover {
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            padding-left: 8px;
         }
         
         .fallback-summary .list-unstyled li:last-child {
@@ -202,85 +450,75 @@
         }
         
         .fallback-summary .list-unstyled li i {
-            width: 20px;
-            margin-right: 10px;
+            width: 24px;
+            margin-right: 12px;
             text-align: center;
+            color: var(--primary-color);
         }
         
         .fallback-summary .alert {
-            border-radius: 12px;
+            border-radius: 16px;
             border: none;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
         }
         
         .fallback-summary .alert-success {
-            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            background: linear-gradient(135deg, rgba(209, 250, 229, 0.9), rgba(167, 243, 208, 0.9));
             color: #065f46;
         }
         
         .fallback-summary .alert-warning {
-            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            background: linear-gradient(135deg, rgba(254, 243, 199, 0.9), rgba(253, 230, 138, 0.9));
             color: #92400e;
         }
         
         .fallback-summary .alert-secondary {
-            background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+            background: linear-gradient(135deg, rgba(243, 244, 246, 0.9), rgba(229, 231, 235, 0.9));
             color: #374151;
         }
         
-        .fallback-summary .row {
-            margin: 0;
-        }
-        
-        .fallback-summary .col-md-6 {
-            padding: 0 15px;
-        }
-        
         .summary-text {
-            line-height: 1.6;
+            line-height: 1.7;
+            font-size: 1.05rem;
         }
         
         /* Action Items and Recommendations Styles */
         .action-item-content, .recommendation-content {
-            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
-            border-radius: 8px;
-            padding: 15px;
-            border: 1px solid #e2e8f0;
+            background: linear-gradient(135deg, rgba(248, 250, 252, 0.9), rgba(226, 232, 240, 0.9));
+            backdrop-filter: blur(15px);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--glass-border);
         }
         
         .action-main, .recommendation-main {
-            font-weight: 500;
-            color: #374151;
-            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--dark-color);
+            margin-bottom: 12px;
+            font-size: 1.1rem;
         }
         
         .action-details, .recommendation-details {
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             color: #6b7280;
         }
         
         .action-details p, .recommendation-details p {
-            margin-bottom: 5px;
+            margin-bottom: 8px;
         }
         
         .action-details i, .recommendation-details i {
-            width: 16px;
+            width: 18px;
             text-align: center;
+            color: var(--primary-color);
         }
         
-        /* Gmail Connection Status Styles */
-        .navbar-text .text-success {
-            font-size: 0.9rem;
-        }
-        
-        .navbar-text i {
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
+        /* Alert positioning */
+        .alert.position-fixed {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            border-radius: 16px;
+            backdrop-filter: blur(15px);
         }
     </style>
     
@@ -290,31 +528,106 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-light sticky-top">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
-                <i class="fas fa-robot text-primary me-2"></i>
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-robot me-2"></i>
                 AI Email Assistant
             </a>
             
-            <div class="navbar-nav ms-auto">
-                {% if session.get('gmail_authenticated') %}
-                    <span class="navbar-text me-3">
-                        <i class="fas fa-check-circle text-success me-1"></i>
-                        <span class="text-success fw-medium">Gmail Connected</span>
-                    </span>
-                    <a class="nav-link" href="{{ url_for('dashboard') }}">
-                        <i class="fas fa-tachometer-alt me-1"></i>
-                        Dashboard
-                    </a>
-                    <a class="nav-link" href="{{ url_for('logout') }}">
-                        <i class="fas fa-sign-out-alt me-1"></i>
-                        Logout
-                    </a>
-                {% else %}
-                    <a class="nav-link" href="{{ url_for('connect_gmail') }}">
-                        <i class="fas fa-envelope me-1"></i>
-                        Connect Gmail
-                    </a>
-                {% endif %}
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="fas fa-home me-1"></i>
+                            Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('pricing') }}">
+                            <i class="fas fa-tags me-1"></i>
+                            Pricing
+                        </a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav">
+                    {% if session.get('user_id') %}
+                        <!-- User is logged in -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user-circle me-1"></i>
+                                {{ session.get('user_name', session.get('user_email', 'User')) }}
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('dashboard') }}">
+                                        <i class="fas fa-tachometer-alt me-2"></i>
+                                        Dashboard
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('account') }}">
+                                        <i class="fas fa-user me-2"></i>
+                                        Account
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('account_subscription') }}">
+                                        <i class="fas fa-credit-card me-2"></i>
+                                        Subscription
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                        <i class="fas fa-sign-out-alt me-2"></i>
+                                        Logout
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                        
+                        {% if session.get('gmail_authenticated') %}
+                            <li class="nav-item">
+                                <span class="navbar-text me-3">
+                                    <i class="fas fa-check-circle text-success me-1"></i>
+                                    <span class="text-success fw-semibold">Gmail Connected</span>
+                                </span>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('connect_gmail') }}">
+                                    <i class="fas fa-envelope me-1"></i>
+                                    Connect Gmail
+                                </a>
+                            </li>
+                        {% endif %}
+                        
+                        <!-- Subscription Plan Badge -->
+                        <li class="nav-item">
+                            <span class="badge bg-{{ 'primary' if session.get('subscription_plan') != 'free' else 'secondary' }} me-2">
+                                {{ session.get('subscription_plan', 'free')|title }}
+                            </span>
+                        </li>
+                    {% else %}
+                        <!-- User is not logged in -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('login') }}">
+                                <i class="fas fa-sign-in-alt me-1"></i>
+                                Login
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-primary btn-sm text-white px-3" href="{{ url_for('signup') }}">
+                                <i class="fas fa-user-plus me-1"></i>
+                                Sign Up
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
             </div>
         </div>
     </nav>

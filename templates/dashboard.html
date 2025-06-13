@@ -4,15 +4,40 @@
 
 {% block content %}
 <div class="row">
-    <!-- Header -->
-    <div class="col-12 mb-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <h1 class="h3 mb-2">
-                    <i class="fas fa-tachometer-alt text-primary me-2"></i>
+    <!-- Dashboard Header -->
+    <div class="dashboard-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1 class="mb-2">
+                    <i class="fas fa-tachometer-alt me-3"></i>
                     Email Dashboard
                 </h1>
-                <p class="text-muted mb-0">{{ date }}</p>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-calendar-alt me-2"></i>
+                    {{ date }} - AI-powered email insights and analysis
+                </p>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="row">
+                    <div class="col-4">
+                        <div class="stats-card">
+                            <div class="stats-number">{{ emails|length }}</div>
+                            <div class="stats-label">Emails</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stats-card">
+                            <div class="stats-number" id="actionItemsCount">{{ action_items|length if action_items else 0 }}</div>
+                            <div class="stats-label">Actions</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stats-card">
+                            <div class="stats-number" id="recommendationsCount">{{ recommendations|length if recommendations else 0 }}</div>
+                            <div class="stats-label">Responses</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -20,24 +45,28 @@
     <!-- Daily Summary -->
     <div class="col-lg-8 mb-4">
         <div class="card summary-card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">
                     <i class="fas fa-chart-pie me-2"></i>
                     Daily Summary
                 </h4>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadAIAnalysis()" id="loadAIBtn">
+                    <i class="fas fa-magic me-1"></i>
+                    Load AI Analysis
+                </button>
             </div>
             <div class="card-body">
                 <div class="row mb-3">
                     <div class="col-md-3 text-center">
                         <div class="h4 text-primary">{{ emails|length }}</div>
-                        <small class="text-muted">Total Emails</small>
+                        <small class="text-muted">Recent Emails</small>
                     </div>
                     <div class="col-md-3 text-center">
-                        <div class="h4 text-warning">{{ action_items|length }}</div>
+                        <div class="h4 text-warning" id="actionItemsCount">{{ action_items|length }}</div>
                         <small class="text-muted">Action Items</small>
                     </div>
                     <div class="col-md-3 text-center">
-                        <div class="h4 text-success">{{ recommendations|length }}</div>
+                        <div class="h4 text-success" id="recommendationsCount">{{ recommendations|length }}</div>
                         <small class="text-muted">Recommendations</small>
                     </div>
                     <div class="col-md-3 text-center">
@@ -48,15 +77,31 @@
                 
                 <div class="summary-content">
                     <h6 class="fw-bold mb-2">AI Analysis:</h6>
-                    {% if summary and "AI Analysis Unavailable" in summary %}
-                        <div class="alert alert-warning mb-3">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            <strong>AI Features Limited:</strong> OpenAI API quota exceeded. Using basic analysis.
-                            <br><small class="text-muted">Upgrade your OpenAI plan or check billing for full AI features.</small>
-                        </div>
-                    {% endif %}
-                    <div class="summary-text">
-                        {{ summary|safe }}
+                    <div id="summaryContent">
+                        {% if summary %}
+                            {% if "Loading AI analysis" in summary %}
+                                <div class="alert alert-info">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                    <strong>Ready to analyze:</strong> Click "Load AI Analysis" to process your emails with AI.
+                                    <br><small class="text-muted">This will analyze your emails and generate insights.</small>
+                                </div>
+                            {% elif "AI Analysis Unavailable" in summary %}
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <strong>AI Features Limited:</strong> OpenAI API quota exceeded. Using basic analysis.
+                                    <br><small class="text-muted">Upgrade your OpenAI plan or check billing for full AI features.</small>
+                                </div>
+                            {% else %}
+                                <div class="summary-text">
+                                    {{ summary|safe }}
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <div class="alert alert-info">
+                                <i class="fas fa-spinner fa-spin me-2"></i>
+                                <strong>Ready to analyze:</strong> Click "Load AI Analysis" to process your emails with AI.
+                            </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -82,9 +127,9 @@
                         <i class="fas fa-download me-2"></i>
                         Export Summary
                     </button>
-                    <button class="btn btn-outline-info" onclick="showEmailStats()">
-                        <i class="fas fa-chart-bar me-2"></i>
-                        View Statistics
+                    <button class="btn btn-outline-info" onclick="showEmailThreads()">
+                        <i class="fas fa-comments me-2"></i>
+                        View Threads
                     </button>
                 </div>
             </div>
@@ -101,25 +146,27 @@
                 </h4>
             </div>
             <div class="card-body">
-                {% if action_items %}
-                    {% for item in action_items %}
-                        <div class="action-item">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h6 class="mb-1">{{ item.email_subject }}</h6>
-                                <span class="badge priority-{{ item.priority }}">{{ item.priority|title }}</span>
+                <div id="actionItemsContent">
+                    {% if action_items %}
+                        {% for item in action_items %}
+                            <div class="action-item">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <h6 class="mb-1">{{ item.subject }}</h6>
+                                    <span class="badge priority-{{ item.priority }}">{{ item.priority|title }}</span>
+                                </div>
+                                <p class="text-muted small mb-2">From: {{ item.email_sender }}</p>
+                                <div class="action-content">
+                                    {{ item.action_items|safe }}
+                                </div>
                             </div>
-                            <p class="text-muted small mb-2">From: {{ item.email_sender }}</p>
-                            <div class="action-content">
-                                {{ item.action_items|safe }}
-                            </div>
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-muted text-center py-3">
-                        <i class="fas fa-check-circle fa-2x mb-2"></i><br>
-                        No action items found for today!
-                    </p>
-                {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted text-center py-3">
+                            <i class="fas fa-check-circle fa-2x mb-2"></i><br>
+                            No action items found for today!
+                        </p>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -134,27 +181,82 @@
                 </h4>
             </div>
             <div class="card-body">
-                {% if recommendations %}
-                    {% for rec in recommendations %}
-                        <div class="recommendation">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h6 class="mb-1">{{ rec.email_subject }}</h6>
-                                <span class="badge priority-{{ rec.priority }}">{{ rec.priority|title }}</span>
+                <div id="recommendationsContent">
+                    {% if recommendations %}
+                        {% for rec in recommendations %}
+                            <div class="recommendation">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <h6 class="mb-1">{{ rec.subject }}</h6>
+                                    <span class="badge priority-{{ rec.priority }}">{{ rec.priority|title }}</span>
+                                </div>
+                                <p class="text-muted small mb-2">From: {{ rec.email_sender }}</p>
+                                <div class="recommendation-content">
+                                    {{ rec.recommendations|safe }}
+                                </div>
+                                <button class="btn btn-sm btn-primary mt-2" onclick="generateResponse('{{ rec.email_id }}')">
+                                    <i class="fas fa-magic me-1"></i>
+                                    Generate Response
+                                </button>
                             </div>
-                            <p class="text-muted small mb-2">From: {{ rec.email_sender }}</p>
-                            <div class="recommendation-content">
-                                {{ rec.recommendations|safe }}
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted text-center py-3">
+                            <i class="fas fa-comments fa-2x mb-2"></i><br>
+                            No response recommendations for today!
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Threads -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-comments me-2"></i>
+                    Email Threads
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if email_threads %}
+                    <div class="row">
+                        {% for thread_key, thread in email_threads.items() %}
+                            <div class="col-md-6 mb-3">
+                                <div class="card thread-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <h6 class="mb-1">{{ thread.subject }}</h6>
+                                            <span class="badge priority-{{ thread.priority }}">{{ thread.priority|title }}</span>
+                                        </div>
+                                        <p class="text-muted small mb-2">
+                                            <i class="fas fa-user me-1"></i>
+                                            {{ thread.sender }}
+                                        </p>
+                                        <p class="text-muted small mb-2">
+                                            <i class="fas fa-comments me-1"></i>
+                                            {{ thread.thread_count }} message{{ 's' if thread.thread_count != 1 else '' }}
+                                        </p>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" onclick="viewThread('{{ thread_key }}')">
+                                                <i class="fas fa-eye me-1"></i>
+                                                View Thread
+                                            </button>
+                                            <button class="btn btn-outline-success" onclick="analyzeThread('{{ thread_key }}')">
+                                                <i class="fas fa-magic me-1"></i>
+                                                Analyze
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <button class="btn btn-sm btn-primary mt-2" onclick="generateResponse('{{ rec.email_id }}')">
-                                <i class="fas fa-magic me-1"></i>
-                                Generate Response
-                            </button>
-                        </div>
-                    {% endfor %}
+                        {% endfor %}
+                    </div>
                 {% else %}
                     <p class="text-muted text-center py-3">
                         <i class="fas fa-comments fa-2x mb-2"></i><br>
-                        No response recommendations for today!
+                        No email threads found for today!
                     </p>
                 {% endif %}
             </div>
@@ -185,7 +287,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for email in emails[:10] %}
+                                {% for email in emails %}
                                     <tr class="email-card">
                                         <td>
                                             <strong>{{ email.sender_clean or email.sender }}</strong>
@@ -202,10 +304,10 @@
                                             </span>
                                         </td>
                                         <td>
-                                            <span class="badge bg-secondary">{{ email.type|title }}</span>
+                                            <span class="badge bg-secondary">{{ email.category|title }}</span>
                                         </td>
                                         <td>
-                                            <small>{{ email.date.split('T')[1][:5] }}</small>
+                                            <small>{{ email.date.split('T')[1][:5] if 'T' in email.date else email.date }}</small>
                                         </td>
                                         <td>
                                             <div class="btn-group btn-group-sm">
@@ -280,11 +382,431 @@
         </div>
     </div>
 </div>
+
+<style>
+    /* Dashboard-specific modern styling */
+    .dashboard-header {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.95));
+        backdrop-filter: blur(20px);
+        border-radius: 24px;
+        padding: 32px;
+        margin-bottom: 32px;
+        border: 1px solid var(--glass-border);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.9));
+        backdrop-filter: blur(15px);
+        border-radius: 20px;
+        padding: 24px;
+        text-align: center;
+        border: 1px solid var(--glass-border);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stats-number {
+        font-size: 2.5rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 8px;
+    }
+    
+    .stats-label {
+        color: #6b7280;
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .table {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(15px);
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--glass-border);
+    }
+    
+    .table thead th {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        border: none;
+        font-weight: 600;
+        padding: 16px 20px;
+    }
+    
+    .table tbody tr {
+        transition: all 0.3s ease;
+    }
+    
+    .table tbody tr:hover {
+        background: rgba(99, 102, 241, 0.05);
+        transform: scale(1.01);
+    }
+    
+    .table tbody td {
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Modern form elements */
+    .form-control {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 12px 16px;
+        transition: all 0.3s ease;
+    }
+    
+    .form-control:focus {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    
+    /* Enhanced modal styling */
+    .modal-dialog {
+        max-width: 800px;
+    }
+    
+    .modal-content {
+        border-radius: 24px;
+        overflow: hidden;
+    }
+    
+    .modal-header {
+        padding: 24px 28px;
+    }
+    
+    .modal-body {
+        padding: 28px;
+    }
+    
+    .modal-footer {
+        padding: 20px 28px;
+        border-top: 1px solid var(--glass-border);
+    }
+    
+    /* Thread messages styling */
+    .thread-message {
+        background: linear-gradient(135deg, rgba(248, 250, 252, 0.8), rgba(226, 232, 240, 0.8));
+        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border-left: 4px solid var(--primary-color);
+        transition: all 0.3s ease;
+    }
+    
+    .thread-message:hover {
+        transform: translateX(4px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .thread-message-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--dark-color);
+    }
+    
+    .thread-message-time {
+        font-size: 0.85rem;
+        color: #6b7280;
+        font-weight: 500;
+    }
+    
+    .thread-message-content {
+        color: #4b5563;
+        line-height: 1.5;
+        font-size: 0.95rem;
+    }
+    
+    /* Enhanced button groups */
+    .btn-group .btn {
+        border-radius: 12px;
+        margin: 0 2px;
+    }
+    
+    .btn-group .btn:first-child {
+        border-radius: 12px 0 0 12px;
+    }
+    
+    .btn-group .btn:last-child {
+        border-radius: 0 12px 12px 0;
+    }
+    
+    /* Loading overlay */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(5px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 32px;
+        text-align: center;
+        border: 1px solid var(--glass-border);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Enhanced alerts */
+    .alert {
+        border-radius: 16px;
+        border: none;
+        backdrop-filter: blur(15px);
+        font-weight: 500;
+    }
+    
+    .alert-info {
+        background: linear-gradient(135deg, rgba(219, 234, 254, 0.9), rgba(191, 219, 254, 0.9));
+        color: #1e40af;
+    }
+    
+    .alert-success {
+        background: linear-gradient(135deg, rgba(209, 250, 229, 0.9), rgba(167, 243, 208, 0.9));
+        color: #065f46;
+    }
+    
+    .alert-danger {
+        background: linear-gradient(135deg, rgba(254, 226, 226, 0.9), rgba(252, 165, 165, 0.9));
+        color: #991b1b;
+    }
+    
+    /* Responsive improvements */
+    @media (max-width: 768px) {
+        .dashboard-header {
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .stats-card {
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        
+        .stats-number {
+            font-size: 2rem;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .table-responsive {
+            border-radius: 16px;
+            overflow: hidden;
+        }
+    }
+</style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let currentEmailId = null;
+let emailThreads = {{ email_threads|tojson }};
+let emails = {{ emails|tojson }};
+
+// Debug: Log the emailThreads structure
+console.log("🔍 Email Threads Debug:");
+console.log("emailThreads type:", typeof emailThreads);
+console.log("emailThreads keys:", Object.keys(emailThreads));
+console.log("emailThreads full data:", emailThreads);
+
+// Check each thread structure
+Object.entries(emailThreads).forEach(([key, thread]) => {
+    console.log(`Thread ${key}:`, {
+        subject: thread.subject,
+        sender: thread.sender,
+        thread_count: thread.thread_count,
+        emails_type: typeof thread.emails,
+        emails_is_array: Array.isArray(thread.emails),
+        emails_length: thread.emails ? thread.emails.length : 'undefined',
+        emails_content: thread.emails
+    });
+});
+
+function loadAIAnalysis() {
+    const btn = document.getElementById('loadAIBtn');
+    const summaryContent = document.getElementById('summaryContent');
+    
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
+    
+    summaryContent.innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-spinner fa-spin me-2"></i>
+            <strong>AI Analysis in Progress:</strong> Analyzing your emails with Claude and OpenAI...
+            <br><small class="text-muted">This may take a few moments.</small>
+        </div>
+    `;
+    
+    // Call the API to process emails
+    fetch('/api/process-emails')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update summary
+                summaryContent.innerHTML = `
+                    <div class="summary-text">
+                        ${data.summary}
+                    </div>
+                `;
+                
+                // Update action items
+                updateActionItems(data.action_items);
+                
+                // Update recommendations
+                updateRecommendations(data.recommendations);
+                
+                // Update counts
+                document.getElementById('actionItemsCount').textContent = data.action_items.length;
+                document.getElementById('recommendationsCount').textContent = data.recommendations.length;
+                
+                // Show success message
+                showAlert('success', 'AI analysis completed successfully!');
+            } else {
+                throw new Error(data.error || 'Failed to process emails');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            summaryContent.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${error.message}
+                    <br><small class="text-muted">Please try again later.</small>
+                </div>
+            `;
+            showAlert('danger', 'Failed to load AI analysis');
+        })
+        .finally(() => {
+            // Reset button
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i>Load AI Analysis';
+        });
+}
+
+function updateActionItems(actionItems) {
+    const container = document.getElementById('actionItemsContent');
+    
+    if (actionItems.length === 0) {
+        container.innerHTML = `
+            <p class="text-muted text-center py-3">
+                <i class="fas fa-check-circle fa-2x mb-2"></i><br>
+                No action items found for today!
+            </p>
+        `;
+        return;
+    }
+    
+    let html = '';
+    actionItems.forEach(item => {
+        html += `
+            <div class="action-item">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="mb-1">${item.subject || 'No Subject'}</h6>
+                    <span class="badge priority-${item.priority || 'medium'}">${item.priority || 'medium'}</span>
+                </div>
+                <p class="text-muted small mb-2">From: ${item.email_sender || 'Unknown'}</p>
+                <div class="action-content">
+                    ${item.action_items}
+                </div>
+                <small class="text-muted">
+                    <i class="fas fa-robot me-1"></i>
+                    Analyzed with ${item.model_used || 'AI'}
+                </small>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function updateRecommendations(recommendations) {
+    const container = document.getElementById('recommendationsContent');
+    
+    if (recommendations.length === 0) {
+        container.innerHTML = `
+            <p class="text-muted text-center py-3">
+                <i class="fas fa-comments fa-2x mb-2"></i><br>
+                No response recommendations for today!
+            </p>
+        `;
+        return;
+    }
+    
+    let html = '';
+    recommendations.forEach(rec => {
+        html += `
+            <div class="recommendation">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="mb-1">${rec.subject || 'No Subject'}</h6>
+                    <span class="badge priority-${rec.priority || 'medium'}">${rec.priority || 'medium'}</span>
+                </div>
+                <p class="text-muted small mb-2">From: ${rec.email_sender || 'Unknown'}</p>
+                <div class="recommendation-content">
+                    ${rec.recommendations}
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted">
+                        <i class="fas fa-robot me-1"></i>
+                        Analyzed with ${rec.model_used || 'AI'}
+                    </small>
+                    <button class="btn btn-sm btn-primary" onclick="generateResponse('${rec.email_id}')">
+                        <i class="fas fa-magic me-1"></i>
+                        Generate Response
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
 
 function refreshData() {
     location.reload();
@@ -293,10 +815,10 @@ function refreshData() {
 function exportSummary() {
     const data = {
         date: '{{ date }}',
-        summary: '{{ summary }}',
+        summary: document.getElementById('summaryContent').innerText,
         actionItems: {{ action_items|tojson }},
         recommendations: {{ recommendations|tojson }},
-        emails: {{ emails|tojson }}
+        emails: emails
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -308,14 +830,268 @@ function exportSummary() {
     URL.revokeObjectURL(url);
 }
 
-function showEmailStats() {
-    // This would show detailed email statistics
-    alert('Email statistics feature coming soon!');
+function showEmailThreads() {
+    // Show email threads in a modal
+    const modalBody = document.getElementById('emailModalBody');
+    
+    // Check if emailThreads is defined and has data
+    if (!emailThreads || Object.keys(emailThreads).length === 0) {
+        modalBody.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                <h5>No Email Threads</h5>
+                <p class="text-muted">No email threads found for today.</p>
+                <button class="btn btn-primary" onclick="refreshData()">
+                    <i class="fas fa-refresh me-1"></i>
+                    Refresh Data
+                </button>
+            </div>
+        `;
+    } else {
+        let threadsHtml = '';
+        Object.entries(emailThreads).forEach(([threadKey, thread]) => {
+            threadsHtml += `
+                <div class="card mb-3 thread-overview-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-1 text-truncate">${thread.subject || 'No Subject'}</h6>
+                            <span class="badge priority-${thread.priority || 'medium'}">${(thread.priority || 'medium').toUpperCase()}</span>
+                        </div>
+                        <p class="text-muted small mb-2">
+                            <i class="fas fa-user me-1"></i>
+                            ${thread.sender || 'Unknown Sender'}
+                        </p>
+                        <p class="text-muted small mb-2">
+                            <i class="fas fa-comments me-1"></i>
+                            ${thread.thread_count || 1} message${(thread.thread_count || 1) !== 1 ? 's' : ''}
+                        </p>
+                        <div class="btn-group btn-group-sm w-100">
+                            <button class="btn btn-outline-primary" onclick="viewThread('${threadKey}')">
+                                <i class="fas fa-eye me-1"></i>
+                                View Thread
+                            </button>
+                            <button class="btn btn-outline-success" onclick="analyzeThread('${threadKey}')">
+                                <i class="fas fa-magic me-1"></i>
+                                Analyze
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        modalBody.innerHTML = `
+            <div class="mb-3">
+                <h5><i class="fas fa-comments me-2"></i>Email Threads Overview</h5>
+                <p class="text-muted">Found ${Object.keys(emailThreads).length} email thread${Object.keys(emailThreads).length !== 1 ? 's' : ''} for today.</p>
+            </div>
+            <div class="threads-list">
+                ${threadsHtml}
+            </div>
+        `;
+    }
+    
+    new bootstrap.Modal(document.getElementById('emailModal')).show();
+}
+
+function viewThread(threadKey) {
+    console.log("🔍 viewThread called with key:", threadKey);
+    console.log("🔍 emailThreads available:", typeof emailThreads);
+    console.log("🔍 emailThreads keys:", Object.keys(emailThreads));
+    
+    // Check if emailThreads is defined
+    if (!emailThreads) {
+        console.error("❌ emailThreads is not defined");
+        alert("Error: emailThreads data not available");
+        return;
+    }
+    
+    // Check if the modal element exists
+    const modalElement = document.getElementById('emailModal');
+    if (!modalElement) {
+        console.error("❌ emailModal element not found");
+        alert("Error: Modal element not found");
+        return;
+    }
+    
+    // Check if Bootstrap is available
+    if (typeof bootstrap === 'undefined') {
+        console.error("❌ Bootstrap is not loaded");
+        alert("Error: Bootstrap not loaded");
+        return;
+    }
+    
+    const thread = emailThreads[threadKey];
+    console.log("🔍 Thread data for key:", threadKey, thread);
+    console.log("🔍 Thread emails type:", typeof thread?.emails);
+    console.log("🔍 Thread emails is array:", Array.isArray(thread?.emails));
+    console.log("🔍 Thread emails length:", thread?.emails?.length);
+
+    const modalBody = document.getElementById('emailModalBody');
+    if (!thread || !Array.isArray(thread.emails) || thread.emails.length === 0) {
+        console.log("❌ Thread data is invalid:", thread);
+        modalBody.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                <h5>Unable to load thread</h5>
+                <p class="text-muted">No messages found in this thread.<br>
+                <code>${JSON.stringify(thread)}</code></p>
+            </div>
+        `;
+        new bootstrap.Modal(modalElement).show();
+        return;
+    }
+
+    // Create thread messages HTML with modern styling
+    let threadMessagesHtml = '';
+    thread.emails.forEach((email, index) => {
+        console.log(`🔍 Processing email ${index}:`, email);
+        const time = email.date && email.date.includes('T') ? email.date.split('T')[1].substring(0, 5) : (email.date || '');
+        threadMessagesHtml += `
+            <div class="thread-message">
+                <div class="thread-message-header">
+                    <span><i class="fas fa-user me-2"></i>${email.sender_clean || email.sender}</span>
+                    <span class="thread-message-time"><i class="fas fa-clock me-1"></i>${time}</span>
+                </div>
+                <div class="thread-message-body mt-2">
+                    ${email.body_clean || email.body || ''}
+                </div>
+            </div>
+        `;
+    });
+    modalBody.innerHTML = `
+        <div class="thread-modal-content">
+            <h5><i class="fas fa-comments me-2"></i>Thread: ${thread.subject || 'No Subject'}</h5>
+            <div class="thread-messages-list mt-3">
+                ${threadMessagesHtml}
+            </div>
+        </div>
+    `;
+    
+    console.log("✅ About to show modal");
+    // Show the modal
+    new bootstrap.Modal(modalElement).show();
+    console.log("✅ Modal show called");
+}
+
+function formatAnalysisContent(content) {
+    // Convert markdown headers to HTML
+    return content
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+        .replace(/<\/ul>\s*<ul>/g, '')
+        .replace(/\n/g, '<br>');
+}
+
+function analyzeThread(threadKey) {
+    const thread = emailThreads[threadKey];
+    if (!thread) {
+        showAlert('error', 'Thread not found');
+        return;
+    }
+    
+    // Show loading state
+    const modalBody = document.getElementById('emailModalBody');
+    modalBody.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h5>Analyzing Thread</h5>
+            <p class="text-muted">Analyzing "${thread.subject}" with AI...</p>
+        </div>
+    `;
+    
+    new bootstrap.Modal(document.getElementById('emailModal')).show();
+    
+    // Use the first email in the thread for analysis (which will include attachments)
+    const firstEmail = thread.emails[0];
+    if (!firstEmail) {
+        modalBody.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> No emails found in thread
+            </div>
+        `;
+        return;
+    }
+    
+    // Call the enhanced API endpoint that handles attachments
+    fetch('/api/analyze-email', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            email_id: firstEmail.id,
+            type: 'thread_analysis'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let attachmentInfo = '';
+            if (data.has_attachments && data.attachment_summary) {
+                attachmentInfo = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-paperclip me-2"></i>
+                        <strong>Attachments Processed:</strong> ${data.attachment_summary.processed}/${data.attachment_summary.total}
+                        ${data.attachment_summary.document_types.length > 0 ? 
+                            `<br><strong>Document Types:</strong> ${data.attachment_summary.document_types.join(', ')}` : ''}
+                    </div>
+                `;
+            }
+            
+            modalBody.innerHTML = `
+                <div class="mb-3">
+                    <h5><i class="fas fa-magic me-2"></i>Thread Analysis</h5>
+                    <p class="text-muted">Analysis of "${thread.subject}"</p>
+                    <small class="text-muted">
+                        <i class="fas fa-robot me-1"></i>
+                        Analyzed with ${data.model_used || 'AI'}
+                    </small>
+                </div>
+                ${attachmentInfo}
+                <div class="border-top pt-3">
+                    <h6>Thread Analysis:</h6>
+                    <div class="analysis-content bg-light p-3 rounded">
+                        ${formatAnalysisContent(data.content)}
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h6>Thread Details:</h6>
+                    <ul class="list-unstyled">
+                        <li><strong>Subject:</strong> ${thread.subject}</li>
+                        <li><strong>Sender:</strong> ${thread.sender}</li>
+                        <li><strong>Messages:</strong> ${thread.thread_count}</li>
+                        <li><strong>Priority:</strong> <span class="badge priority-${thread.priority}">${thread.priority}</span></li>
+                        ${data.has_attachments ? `<li><strong>Attachments:</strong> <span class="badge bg-info">${data.attachments_processed} processed</span></li>` : ''}
+                    </ul>
+                </div>
+            `;
+        } else {
+            modalBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Analysis Failed:</strong> ${data.error || 'Unknown error'}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error analyzing thread:', error);
+        modalBody.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> Failed to analyze thread. Please try again.
+            </div>
+        `;
+    });
 }
 
 function viewEmail(emailId) {
     // Find email data
-    const emails = {{ emails|tojson }};
     const email = emails.find(e => e.id === emailId);
     
     if (email) {
@@ -326,7 +1102,7 @@ function viewEmail(emailId) {
                 <strong>Subject:</strong> ${email.subject}<br>
                 <strong>Date:</strong> ${email.date}<br>
                 <strong>Priority:</strong> <span class="badge priority-${email.priority}">${email.priority}</span><br>
-                <strong>Type:</strong> <span class="badge bg-secondary">${email.type}</span>
+                <strong>Category:</strong> <span class="badge bg-secondary">${email.category}</span>
             </div>
             <div class="border-top pt-3">
                 <h6>Email Content:</h6>
@@ -381,7 +1157,7 @@ function generateResponseFromModal() {
 function copyResponse() {
     const responseText = document.getElementById('responseContent').textContent;
     navigator.clipboard.writeText(responseText).then(() => {
-        alert('Response copied to clipboard!');
+        showAlert('success', 'Response copied to clipboard!');
     });
 }
 

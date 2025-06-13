@@ -191,57 +191,134 @@ class HybridAIService:
             system_prompt = """Extract specific action items from the email. List them clearly with priorities and deadlines if mentioned."""
         elif analysis_type == "recommendations":
             system_prompt = """Provide smart response recommendations for this email. Suggest professional, helpful, and actionable responses."""
+        elif analysis_type == "thread_analysis":
+            system_prompt = """You are an AI email assistant analyzing an email thread. Focus ONLY on the content and context provided in the thread. Do not make assumptions or references to external information not mentioned in the emails.
+
+Provide a comprehensive analysis in this exact format:
+
+## Thread Summary
+[Brief overview of the main discussion]
+
+## Key Points
+- [Point 1]
+- [Point 2]
+- [Point 3]
+
+## Action Items
+- [Action item 1 with priority and deadline if mentioned]
+- [Action item 2 with priority and deadline if mentioned]
+
+## Response Recommendations
+- [Professional response suggestion 1]
+- [Professional response suggestion 2]
+
+## Follow-up Actions
+- [Suggested follow-up action 1]
+- [Suggested follow-up action 2]"""
         else:
-            system_prompt = """Analyze this email and provide insights, key points, and recommendations."""
+            system_prompt = """You are an AI email assistant. Analyze the email and provide insights."""
         
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Email content:\n\n{email_content}"}
+            {"role": "user", "content": f"Please analyze this email:\n\n{email_content}"}
         ]
         
         try:
             # Try Claude first
             response = self._call_claude_api(model, messages)
             content = self._extract_response_content(response, 'claude')
-            
+            print(f"✅ {analysis_type} generated using {model_name}")
             return {
-                "success": True,
                 "content": content,
                 "model_used": model_name,
-                "complexity": complexity,
-                "provider": "claude",
-                "cost_optimized": model_name == 'claude_haiku'
+                "complexity": complexity
             }
+        except Exception as e:
+            print(f"❌ Claude API failed for {analysis_type}: {str(e)}")
             
-        except Exception as claude_error:
-            # Fallback to OpenAI if Claude fails
             if self.fallback_to_openai:
                 try:
                     response = self._call_openai_api(messages)
                     content = self._extract_response_content(response, 'openai')
-                    
+                    print(f"✅ {analysis_type} generated using OpenAI fallback")
                     return {
-                        "success": True,
                         "content": content,
-                        "model_used": "gpt_fallback",
-                        "complexity": complexity,
-                        "provider": "openai",
-                        "fallback_used": True,
-                        "claude_error": str(claude_error)
-                    }
-                except Exception as openai_error:
-                    return {
-                        "success": False,
-                        "error": f"Both Claude and OpenAI failed. Claude: {claude_error}, OpenAI: {openai_error}",
+                        "model_used": "openai_fallback",
                         "complexity": complexity
                     }
+                except Exception as fallback_error:
+                    print(f"❌ OpenAI fallback also failed: {str(fallback_error)}")
+                    raise Exception(f"All AI services failed for {analysis_type}: {str(e)}")
             else:
-                return {
-                    "success": False,
-                    "error": f"Claude API failed: {claude_error}",
-                    "complexity": complexity
-                }
-    
+                raise e
+
+    def generate_email_summary(self, email_content: str, subject: str = "", sender: str = "") -> Dict:
+        """
+        Generate a concise summary of an email.
+        """
+        try:
+            # Enhance the prompt with subject and sender information
+            enhanced_content = f"Subject: {subject}\nFrom: {sender}\n\nContent:\n{email_content}"
+            result = self.analyze_email(enhanced_content, "summary")
+            return {
+                "success": True,
+                "content": result["content"],
+                "model_used": result["model_used"]
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "content": "Unable to generate summary"
+            }
+
+    def extract_action_items(self, email_content: str, subject: str = "", sender: str = "") -> Dict:
+        """
+        Extract action items from an email.
+        """
+        try:
+            # Enhance the prompt with subject and sender information
+            enhanced_content = f"Subject: {subject}\nFrom: {sender}\n\nContent:\n{email_content}"
+            result = self.analyze_email(enhanced_content, "action_items")
+            return {
+                "success": True,
+                "content": result["content"],
+                "model_used": result["model_used"]
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "content": "Unable to extract action items"
+            }
+
+    def generate_response_recommendations(self, email_content: str, subject: str = "", sender: str = "") -> Dict:
+        """
+        Generate response recommendations for an email.
+        """
+        try:
+            # Enhance the prompt with subject and sender information
+            enhanced_content = f"Subject: {subject}\nFrom: {sender}\n\nContent:\n{email_content}"
+            result = self.analyze_email(enhanced_content, "recommendations")
+            return {
+                "success": True,
+                "content": result["content"],
+                "model_used": result["model_used"]
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "content": "Unable to generate recommendations"
+            }
+
+    def analyze_email_thread(self, thread_content: str) -> str:
+        """
+        Analyze an email thread and provide comprehensive insights.
+        """
+        result = self.analyze_email(thread_content, "thread_analysis")
+        return result["content"]
+
     def generate_daily_summary(self, emails: List[Dict]) -> Dict:
         """
         Generate daily summary using the most appropriate model based on email volume and complexity.

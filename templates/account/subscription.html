@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Subscription Management - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">Subscription Management</h1>
+                <a href="{{ url_for('pricing') }}" class="btn btn-primary">Upgrade Plan</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Current Subscription -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Current Subscription</h5>
+                </div>
+                <div class="card-body">
+                    {% if user %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-muted">Plan</h6>
+                            <p class="h5 text-capitalize">{{ user.subscription_plan or 'Free' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted">Status</h6>
+                            <span class="badge bg-{{ 'success' if user.subscription_status == 'active' else 'warning' }}">
+                                {{ user.subscription_status or 'Active' }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    {% if user.subscription_expires %}
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h6 class="text-muted">Expires</h6>
+                            <p>{{ user.subscription_expires.strftime('%B %d, %Y') if user.subscription_expires else 'N/A' }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted">Usage</h6>
+                            <p>{{ user.api_usage_count or 0 }} / {{ user.monthly_usage_limit or 'Unlimited' }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-muted">No subscription information available.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('pricing') }}" class="btn btn-primary">
+                            <i class="fas fa-arrow-up"></i> Upgrade Plan
+                        </a>
+                        <a href="{{ url_for('account_billing') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-credit-card"></i> Billing History
+                        </a>
+                        <a href="{{ url_for('account') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-user"></i> Account Settings
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Plans -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Available Plans</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for plan in plans %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 {{ 'border-primary' if plan.id == user.subscription_plan else '' }}">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">{{ plan.name }}</h5>
+                                    <h3 class="text-primary">${{ plan.price }}/month</h3>
+                                    <ul class="list-unstyled">
+                                        {% for feature in plan.features %}
+                                        <li><i class="fas fa-check text-success"></i> {{ feature }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% if plan.id != user.subscription_plan %}
+                                    <a href="{{ url_for('pricing') }}?plan={{ plan.id }}" class="btn btn-primary">
+                                        {{ 'Upgrade' if user.subscription_plan else 'Choose Plan' }}
+                                    </a>
+                                    {% else %}
+                                    <span class="badge bg-success">Current Plan</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

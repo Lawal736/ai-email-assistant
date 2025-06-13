@@ -1,4 +1,5 @@
 import re
+import hashlib
 from datetime import datetime
 from typing import List, Dict, Any
 from email.utils import parsedate_to_datetime
@@ -6,7 +7,11 @@ from email.utils import parsedate_to_datetime
 class EmailProcessor:
     """Class for processing and organizing email data"""
     
-    def __init__(self):
+    def __init__(self, ai_service=None, document_processor=None, gmail_service=None):
+        self.ai_service = ai_service
+        self.document_processor = document_processor
+        self.gmail_service = gmail_service
+        
         self.priority_keywords = {
             'high': ['urgent', 'asap', 'emergency', 'critical', 'deadline', 'important'],
             'medium': ['meeting', 'call', 'discussion', 'review', 'update', 'follow-up'],
@@ -201,36 +206,21 @@ class EmailProcessor:
             'phone_numbers': []
         }
         
-        body = email.get('body', '')
-        
         # Extract dates
-        date_patterns = [
-            r'\b\d{1,2}/\d{1,2}/\d{4}\b',
-            r'\b\d{1,2}-\d{1,2}-\d{4}\b',
-            r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}\b'
-        ]
-        
-        for pattern in date_patterns:
-            dates = re.findall(pattern, body, re.IGNORECASE)
-            info['dates_mentioned'].extend(dates)
+        date_pattern = r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b'
+        info['dates_mentioned'] = re.findall(date_pattern, email.get('body', ''))
         
         # Extract times
-        time_patterns = [
-            r'\b\d{1,2}:\d{2}\s*(?:AM|PM)?\b',
-            r'\b(?:morning|afternoon|evening|night)\b'
-        ]
-        
-        for pattern in time_patterns:
-            times = re.findall(pattern, body, re.IGNORECASE)
-            info['times_mentioned'].extend(times)
+        time_pattern = r'\b\d{1,2}:\d{2}\s*(?:AM|PM)?\b'
+        info['times_mentioned'] = re.findall(time_pattern, email.get('body', ''))
         
         # Extract URLs
         url_pattern = r'https?://[^\s]+'
-        info['urls'] = re.findall(url_pattern, body)
+        info['urls'] = re.findall(url_pattern, email.get('body', ''))
         
         # Extract phone numbers
         phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
-        info['phone_numbers'] = re.findall(phone_pattern, body)
+        info['phone_numbers'] = re.findall(phone_pattern, email.get('body', ''))
         
         return info
     
@@ -302,4 +292,396 @@ class EmailProcessor:
         if urgency_scores:
             stats['avg_urgency_score'] = sum(urgency_scores) / len(urgency_scores)
         
-        return stats 
+        return stats
+    
+    def filter_emails(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter out newsletters, daily alerts, and other non-essential emails"""
+        filtered_emails = []
+        filtered_count = 0
+        
+        for email in emails:
+            subject = email.get('subject', '').lower()
+            sender = email.get('sender', '').lower()
+            body = email.get('body', '').lower()
+            
+            # Skip obvious newsletters and marketing emails (more specific)
+            if any(keyword in subject for keyword in [
+                'newsletter', 'subscribe', 'unsubscribe', 'marketing', 'promotion',
+                'special offer', 'limited time', 'discount', 'sale', 'deal'
+            ]):
+                print(f"🚫 Filtered out newsletter: {subject[:50]}...")
+                filtered_count += 1
+                continue
+            
+            # Skip obvious daily alerts and notifications (more specific)
+            if any(keyword in subject for keyword in [
+                'daily digest', 'daily summary', 'daily report', 'daily update',
+                'weekly digest', 'weekly summary', 'weekly report',
+                'monthly digest', 'monthly summary', 'monthly report'
+            ]):
+                print(f"🚫 Filtered out digest: {subject[:50]}...")
+                filtered_count += 1
+                continue
+            
+            # Skip obvious automated emails from common services
+            if any(domain in sender for domain in [
+                'noreply@', 'no-reply@', 'donotreply@', 'do-not-reply@',
+                'notifications@', 'alerts@', 'updates@', 'system@'
+            ]):
+                print(f"🚫 Filtered out automated: {sender}")
+                filtered_count += 1
+                continue
+            
+            # Skip obvious social media notifications (more specific)
+            if any(keyword in sender for keyword in [
+                'facebook.com', 'twitter.com', 'instagram.com', 'linkedin.com', 'youtube.com',
+                'tiktok.com', 'snapchat.com', 'pinterest.com'
+            ]):
+                print(f"🚫 Filtered out social media: {sender}")
+                filtered_count += 1
+                continue
+            
+            # Skip obvious shopping and e-commerce notifications (more specific)
+            if any(keyword in subject for keyword in [
+                'order confirmation', 'shipping confirmation', 'delivery update',
+                'tracking', 'receipt', 'invoice', 'payment confirmation'
+            ]):
+                print(f"🚫 Filtered out shopping: {subject[:50]}...")
+                filtered_count += 1
+                continue
+            
+            # Keep the email
+            filtered_emails.append(email)
+        
+        print(f"📊 Email filtering: {len(emails)} total, {filtered_count} filtered, {len(filtered_emails)} kept")
+        return filtered_emails
+    
+    def process_emails_basic(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Process emails with basic information only (no AI analysis)"""
+        processed_emails = []
+        
+        for email in emails:
+            processed_email = self._process_single_email_basic(email)
+            if processed_email:
+                processed_emails.append(processed_email)
+        
+        # Sort emails by date (most recent first)
+        processed_emails.sort(key=lambda x: x['date'], reverse=True)
+        
+        return processed_emails
+    
+    def _process_single_email_basic(self, email: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a single email with basic metadata only"""
+        try:
+            # Clean and enhance email data
+            processed_email = email.copy()
+            
+            # Clean sender information
+            processed_email['sender_clean'] = self._clean_sender(email['sender'])
+            processed_email['sender_domain'] = self._extract_domain(email['sender'])
+            
+            # Clean and truncate body
+            processed_email['body_clean'] = self._clean_email_body(email['body'])
+            processed_email['body_preview'] = self._create_preview(email['body'], 200)
+            
+            # Add basic metadata
+            processed_email['processed_at'] = datetime.now().isoformat()
+            processed_email['word_count'] = len(email['body'].split())
+            processed_email['has_attachments'] = self._check_attachments(email)
+            
+            # Basic classification
+            processed_email['category'] = self._categorize_email(email)
+            processed_email['urgency_score'] = self._calculate_urgency_score(email)
+            
+            return processed_email
+        
+        except Exception as e:
+            print(f"Error processing email {email.get('id', 'unknown')}: {e}")
+            return email
+    
+    def group_emails_by_thread(self, emails: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Group emails by sender and subject to identify email threads"""
+        threads = {}
+        
+        for email in emails:
+            sender = email.get('sender_clean', email.get('sender', 'Unknown'))
+            subject = email.get('subject', 'No Subject')
+            
+            # Create a thread key based on sender and normalized subject
+            thread_key = self._create_thread_key(sender, subject)
+            
+            if thread_key not in threads:
+                threads[thread_key] = {
+                    'sender': sender,
+                    'subject': subject,
+                    'emails': [],
+                    'thread_count': 0,
+                    'latest_date': email.get('date', ''),
+                    'priority': email.get('priority', 'low')
+                }
+            
+            threads[thread_key]['emails'].append(email)
+            threads[thread_key]['thread_count'] += 1
+            
+            # Update latest date
+            if email.get('date', '') > threads[thread_key]['latest_date']:
+                threads[thread_key]['latest_date'] = email.get('date', '')
+            
+            # Update priority if this email has higher priority
+            if self._priority_to_number(email.get('priority', 'low')) > self._priority_to_number(threads[thread_key]['priority']):
+                threads[thread_key]['priority'] = email.get('priority', 'low')
+        
+        # Sort threads by priority and latest date
+        sorted_threads = dict(sorted(
+            threads.items(),
+            key=lambda x: (
+                self._priority_to_number(x[1]['priority']),
+                x[1]['latest_date']
+            ),
+            reverse=True
+        ))
+        
+        return sorted_threads
+    
+    def _create_thread_key(self, sender: str, subject: str) -> str:
+        """Create a thread key based on sender and normalized subject"""
+        # Normalize subject by removing common prefixes
+        normalized_subject = subject.lower()
+        
+        # Remove common reply prefixes
+        reply_prefixes = ['re:', 're :', 'fwd:', 'fwd :', 'fw:', 'fw :']
+        for prefix in reply_prefixes:
+            if normalized_subject.startswith(prefix):
+                normalized_subject = normalized_subject[len(prefix):].strip()
+        
+        # Remove common email prefixes
+        email_prefixes = ['[', '(', '{']
+        for prefix in email_prefixes:
+            if normalized_subject.startswith(prefix):
+                # Find the closing bracket
+                close_char = {'[': ']', '(': ')', '{': '}'}[prefix]
+                end_pos = normalized_subject.find(close_char)
+                if end_pos != -1:
+                    normalized_subject = normalized_subject[end_pos + 1:].strip()
+        
+        # Clean sender and subject for safe key generation
+        safe_sender = re.sub(r'[^a-zA-Z0-9]', '_', sender.lower())
+        safe_subject = re.sub(r'[^a-zA-Z0-9\s]', '_', normalized_subject)
+        
+        # Create a hash-based thread key to avoid special character issues
+        key_string = f"{safe_sender}_{safe_subject}"
+        thread_key = hashlib.md5(key_string.encode()).hexdigest()[:16]
+        
+        return thread_key
+    
+    def analyze_email_thread(self, thread_emails: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze an email thread to understand the conversation flow"""
+        if not thread_emails:
+            return {}
+        
+        # Sort emails by date
+        sorted_emails = sorted(thread_emails, key=lambda x: x.get('date', ''))
+        
+        analysis = {
+            'thread_length': len(sorted_emails),
+            'participants': set(),
+            'timeline': [],
+            'conversation_summary': '',
+            'suggested_response': ''
+        }
+        
+        # Extract participants
+        for email in sorted_emails:
+            sender = email.get('sender_clean', email.get('sender', 'Unknown'))
+            analysis['participants'].add(sender)
+        
+        analysis['participants'] = list(analysis['participants'])
+        
+        # Create timeline
+        for i, email in enumerate(sorted_emails):
+            analysis['timeline'].append({
+                'index': i + 1,
+                'sender': email.get('sender_clean', email.get('sender', 'Unknown')),
+                'date': email.get('date', ''),
+                'preview': email.get('body_preview', '')[:100] + '...',
+                'priority': email.get('priority', 'low')
+            })
+        
+        # Create conversation summary
+        if len(sorted_emails) > 1:
+            latest_email = sorted_emails[-1]
+            analysis['conversation_summary'] = f"Thread with {len(analysis['participants'])} participants, {len(sorted_emails)} messages. Latest from {latest_email.get('sender_clean', 'Unknown')}"
+        else:
+            analysis['conversation_summary'] = f"Single email from {sorted_emails[0].get('sender_clean', 'Unknown')}"
+        
+        return analysis
+    
+    def process_email_with_attachments(self, email: Dict[str, Any]) -> Dict[str, Any]:
+        """Process email and analyze any attachments"""
+        processed_email = self._process_single_email(email)
+        
+        if not processed_email:
+            return email
+        
+        # Process attachments if available
+        if (self.document_processor and self.gmail_service and 
+            email.get('has_attachments') and email.get('attachments')):
+            
+            attachment_analysis = self._analyze_attachments(email)
+            processed_email['attachment_analysis'] = attachment_analysis
+            
+            # If we have AI service, enhance the analysis
+            if self.ai_service and attachment_analysis.get('extracted_text'):
+                enhanced_analysis = self._enhance_analysis_with_attachments(
+                    email, attachment_analysis
+                )
+                processed_email['enhanced_analysis'] = enhanced_analysis
+        
+        return processed_email
+    
+    def _analyze_attachments(self, email: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze email attachments"""
+        attachment_analysis = {
+            'total_attachments': len(email.get('attachments', [])),
+            'processed_attachments': 0,
+            'extracted_text': '',
+            'document_summaries': [],
+            'key_points': [],
+            'errors': []
+        }
+        
+        for attachment in email.get('attachments', []):
+            try:
+                # Get attachment content
+                attachment_data = self.gmail_service.get_attachment_content(
+                    email['id'], attachment['id']
+                )
+                
+                if attachment_data:
+                    # Extract text from document
+                    doc_result = self.document_processor.extract_document_text(
+                        attachment_data, 
+                        attachment['mime_type'], 
+                        attachment['filename']
+                    )
+                    
+                    if doc_result['success'] and doc_result['text']:
+                        attachment_analysis['processed_attachments'] += 1
+                        attachment_analysis['extracted_text'] += f"\n\n--- {attachment['filename']} ---\n"
+                        attachment_analysis['extracted_text'] += doc_result['text']
+                        
+                        # Analyze document content
+                        doc_analysis = self.document_processor.analyze_document_content(
+                            doc_result['text'], 
+                            attachment['filename']
+                        )
+                        
+                        if doc_analysis['success']:
+                            attachment_analysis['document_summaries'].append({
+                                'filename': attachment['filename'],
+                                'type': doc_analysis['document_type'],
+                                'word_count': doc_analysis['word_count'],
+                                'key_points': doc_analysis['key_points'],
+                                'analysis': doc_analysis['analysis']
+                            })
+                            
+                            # Add key points to overall list
+                            attachment_analysis['key_points'].extend(doc_analysis['key_points'])
+                    else:
+                        attachment_analysis['errors'].append(
+                            f"Failed to extract text from {attachment['filename']}: {doc_result.get('error', 'Unknown error')}"
+                        )
+                else:
+                    attachment_analysis['errors'].append(
+                        f"Failed to retrieve attachment content for {attachment['filename']}"
+                    )
+                    
+            except Exception as e:
+                attachment_analysis['errors'].append(
+                    f"Error processing {attachment.get('filename', 'unknown')}: {str(e)}"
+                )
+        
+        return attachment_analysis
+    
+    def _enhance_analysis_with_attachments(self, email: Dict[str, Any], attachment_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Use AI to enhance email analysis with attachment content"""
+        try:
+            # Prepare context for AI analysis
+            email_context = f"""
+Email Subject: {email.get('subject', '')}
+Email Sender: {email.get('sender', '')}
+Email Body: {email.get('body', '')}
+
+Attachments Found: {attachment_analysis['total_attachments']}
+Processed Attachments: {attachment_analysis['processed_attachments']}
+
+Document Summaries:
+{self._format_document_summaries(attachment_analysis['document_summaries'])}
+
+Key Points from Attachments:
+{self._format_key_points(attachment_analysis['key_points'])}
+
+Extracted Text from Attachments:
+{attachment_analysis['extracted_text'][:2000]}...
+"""
+            
+            # Generate enhanced analysis using AI
+            enhanced_prompt = f"""
+Based on the email content and attached documents, provide a comprehensive analysis:
+
+{email_context}
+
+Please provide:
+1. **Email Context Analysis**: What is the main purpose of this email?
+2. **Document Relevance**: How do the attached documents relate to the email content?
+3. **Key Information**: What are the most important points from both email and attachments?
+4. **Action Items**: What actions are required based on the email and documents?
+5. **Priority Assessment**: How urgent is this email considering the document content?
+6. **Response Recommendations**: What should be included in a response?
+
+Format your response in clear sections with bullet points where appropriate.
+"""
+            
+            if self.ai_service:
+                enhanced_response = self.ai_service.analyze_text(enhanced_prompt)
+                return {
+                    'enhanced_analysis': enhanced_response,
+                    'context_used': email_context[:500] + "...",
+                    'attachments_considered': attachment_analysis['processed_attachments']
+                }
+            else:
+                return {
+                    'enhanced_analysis': 'AI service not available for enhanced analysis',
+                    'context_used': email_context[:500] + "...",
+                    'attachments_considered': attachment_analysis['processed_attachments']
+                }
+                
+        except Exception as e:
+            return {
+                'enhanced_analysis': f'Error generating enhanced analysis: {str(e)}',
+                'context_used': '',
+                'attachments_considered': 0
+            }
+    
+    def _format_document_summaries(self, summaries: List[Dict[str, Any]]) -> str:
+        """Format document summaries for AI prompt"""
+        if not summaries:
+            return "No documents processed."
+        
+        formatted = ""
+        for summary in summaries:
+            formatted += f"- {summary['filename']} ({summary['type']}): {summary['word_count']} words\n"
+            formatted += f"  Analysis: {summary['analysis']}\n"
+        
+        return formatted
+    
+    def _format_key_points(self, key_points: List[str]) -> str:
+        """Format key points for AI prompt"""
+        if not key_points:
+            return "No key points extracted."
+        
+        formatted = ""
+        for i, point in enumerate(key_points[:5], 1):  # Limit to top 5
+            formatted += f"{i}. {point}\n"
+        
+        return formatted 

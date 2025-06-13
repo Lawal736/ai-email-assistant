@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Header Section -->
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold mb-3">
+            <i class="fas fa-tags text-primary me-3"></i>
+            Choose Your Plan
+        </h1>
+        <p class="lead text-muted">
+            Start with our free plan and upgrade as you grow. All plans include our core AI features.
+        </p>
+        
+        <!-- Billing Toggle -->
+        <div class="d-flex justify-content-center align-items-center mb-4">
+            <span class="me-3">Monthly</span>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="billingToggle" style="width: 3rem; height: 1.5rem;">
+                <label class="form-check-label ms-2" for="billingToggle">Yearly</label>
+            </div>
+            <span class="ms-3">
+                <span class="badge bg-success">Save 17%</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Pricing Cards -->
+    <div class="row justify-content-center g-4">
+        {% for plan in plans %}
+        <div class="col-lg-4 col-md-6">
+            <div class="card h-100 shadow-lg {% if plan.name == 'pro' %}border-primary{% endif %}">
+                {% if plan.name == 'pro' %}
+                <div class="card-header bg-primary text-white text-center py-3">
+                    <span class="badge bg-warning text-dark">Most Popular</span>
+                </div>
+                {% endif %}
+                
+                <div class="card-body p-4">
+                    <div class="text-center mb-4">
+                        <h3 class="fw-bold">{{ plan.name|title }}</h3>
+                        <div class="pricing-amount">
+                            <span class="display-6 fw-bold text-primary">
+                                $<span class="monthly-price">{{ "%.2f"|format(plan.price_monthly) }}</span>
+                                <span class="yearly-price d-none">{{ "%.2f"|format(plan.price_yearly) }}</span>
+                            </span>
+                            <span class="text-muted">
+                                /<span class="monthly-period">month</span><span class="yearly-period d-none">year</span>
+                            </span>
+                        </div>
+                        <p class="text-muted mb-0">
+                            Up to {{ plan.email_limit }} emails per month
+                        </p>
+                    </div>
+
+                    <ul class="list-unstyled mb-4">
+                        {% for feature in plan.features %}
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            {{ feature }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+
+                    <div class="d-grid">
+                        {% if session.get('user_id') %}
+                            {% if plan.name == 'free' %}
+                                <span class="btn btn-outline-secondary">
+                                    <i class="fas fa-check me-2"></i>Current Plan
+                                </span>
+                            {% else %}
+                                <button class="btn btn-{% if plan.name == 'pro' %}primary{% else %}outline-primary{% endif %} btn-lg"
+                                        onclick="selectPlan('{{ plan.name }}')">
+                                    <i class="fas fa-credit-card me-2"></i>
+                                    {% if plan.name == 'free' %}Get Started{% else %}Subscribe Now{% endif %}
+                                </button>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('signup') }}" class="btn btn-{% if plan.name == 'pro' %}primary{% else %}outline-primary{% endif %} btn-lg">
+                                <i class="fas fa-user-plus me-2"></i>
+                                Get Started
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- FAQ Section -->
+    <div class="row justify-content-center mt-5">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h3 class="text-center mb-4">
+                        <i class="fas fa-question-circle text-primary me-2"></i>
+                        Frequently Asked Questions
+                    </h3>
+                    
+                    <div class="accordion" id="faqAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faq1">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse1">
+                                    Can I change my plan at any time?
+                                </button>
+                            </h2>
+                            <div id="collapse1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate any billing adjustments.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faq2">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse2">
+                                    What happens if I exceed my email limit?
+                                </button>
+                            </h2>
+                            <div id="collapse2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    If you exceed your monthly email limit, you'll receive a notification and can either upgrade your plan or wait until the next billing cycle.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faq3">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse3">
+                                    Is my data secure?
+                                </button>
+                            </h2>
+                            <div id="collapse3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Absolutely! We use industry-standard encryption and security measures. Your emails are processed securely and never stored permanently.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faq4">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse4">
+                                    Can I cancel my subscription?
+                                </button>
+                            </h2>
+                            <div id="collapse4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your current billing period.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Section -->
+    <div class="text-center mt-5">
+        <div class="card bg-light">
+            <div class="card-body p-4">
+                <h4 class="mb-3">
+                    <i class="fas fa-headset text-primary me-2"></i>
+                    Need Help Choosing?
+                </h4>
+                <p class="text-muted mb-3">
+                    Our team is here to help you find the perfect plan for your needs.
+                </p>
+                <a href="mailto:support@aiemailassistant.com" class="btn btn-outline-primary">
+                    <i class="fas fa-envelope me-2"></i>
+                    Contact Support
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Plan Selection Modal -->
+<div class="modal fade" id="planModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-credit-card me-2"></i>
+                    Choose Payment Method
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Select your preferred payment method for the <strong id="selectedPlanName"></strong> plan:</p>
+                
+                <!-- Payment Methods -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="card border-primary payment-method-card" data-method="stripe">
+                            <div class="card-body text-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-credit-card fa-3x text-primary"></i>
+                                </div>
+                                <h6 class="card-title">Credit Card</h6>
+                                <p class="card-text text-muted">Pay with Visa, Mastercard, or other cards</p>
+                                <div class="payment-logos">
+                                    <i class="fab fa-cc-visa me-2"></i>
+                                    <i class="fab fa-cc-mastercard me-2"></i>
+                                    <i class="fab fa-cc-amex"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card payment-method-card" data-method="crypto">
+                            <div class="card-body text-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-coins fa-3x text-warning"></i>
+                                </div>
+                                <h6 class="card-title">USDT (ERC20)</h6>
+                                <p class="card-text text-muted">Pay with USDT on Ethereum network</p>
+                                <div class="crypto-info">
+                                    <small class="text-muted">
+                                        <i class="fab fa-ethereum me-1"></i>
+                                        Ethereum Mainnet
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Billing Period Selection -->
+                <div class="billing-selection d-none">
+                    <h6 class="mb-3">Select Billing Period:</h6>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div class="card border-primary" id="monthlyCard">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Monthly</h6>
+                                    <p class="card-text text-muted">Billed monthly</p>
+                                    <button class="btn btn-primary btn-sm" onclick="proceedToPayment('monthly')">
+                                        Select Monthly
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card" id="yearlyCard">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">Yearly</h6>
+                                    <p class="card-text text-muted">Billed annually</p>
+                                    <span class="badge bg-success mb-2">Save 17%</span>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="proceedToPayment('yearly')">
+                                        Select Yearly
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedPlan = '';
+let selectedPaymentMethod = '';
+
+// Billing toggle functionality
+document.getElementById('billingToggle').addEventListener('change', function() {
+    const monthlyPrices = document.querySelectorAll('.monthly-price');
+    const yearlyPrices = document.querySelectorAll('.yearly-price');
+    const monthlyPeriods = document.querySelectorAll('.monthly-period');
+    const yearlyPeriods = document.querySelectorAll('.yearly-period');
+    
+    if (this.checked) {
+        // Show yearly pricing
+        monthlyPrices.forEach(price => price.classList.add('d-none'));
+        yearlyPrices.forEach(price => price.classList.remove('d-none'));
+        monthlyPeriods.forEach(period => period.classList.add('d-none'));
+        yearlyPeriods.forEach(period => period.classList.remove('d-none'));
+    } else {
+        // Show monthly pricing
+        monthlyPrices.forEach(price => price.classList.remove('d-none'));
+        yearlyPrices.forEach(price => price.classList.add('d-none'));
+        monthlyPeriods.forEach(period => period.classList.remove('d-none'));
+        yearlyPeriods.forEach(period => period.classList.add('d-none'));
+    }
+});
+
+function selectPlan(planName) {
+    selectedPlan = planName;
+    document.getElementById('selectedPlanName').textContent = planName.charAt(0).toUpperCase() + planName.slice(1);
+    
+    // Reset payment method cards
+    document.querySelectorAll('.payment-method-card').forEach(card => {
+        card.classList.remove('border-primary');
+    });
+    
+    // Hide billing selection initially
+    document.querySelector('.billing-selection').classList.add('d-none');
+    
+    // Show modal
+    new bootstrap.Modal(document.getElementById('planModal')).show();
+}
+
+// Payment method selection
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.payment-method-card')) {
+        const card = e.target.closest('.payment-method-card');
+        const method = card.dataset.method;
+        
+        // Reset all cards
+        document.querySelectorAll('.payment-method-card').forEach(c => {
+            c.classList.remove('border-primary');
+        });
+        
+        // Highlight selected card
+        card.classList.add('border-primary');
+        selectedPaymentMethod = method;
+        
+        // Show billing selection for Stripe payments
+        if (method === 'stripe') {
+            document.querySelector('.billing-selection').classList.remove('d-none');
+        } else {
+            // For crypto, proceed directly
+            proceedToPayment('monthly'); // Default to monthly for crypto
+        }
+    }
+});
+
+function proceedToPayment(billingPeriod) {
+    if (selectedPaymentMethod === 'crypto') {
+        // Redirect to crypto payment
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("crypto_checkout") }}';
+        
+        const planInput = document.createElement('input');
+        planInput.type = 'hidden';
+        planInput.name = 'plan';
+        planInput.value = selectedPlan;
+        
+        form.appendChild(planInput);
+        document.body.appendChild(form);
+        form.submit();
+    } else {
+        // Redirect to Stripe payment
+        window.location.href = `/payment/checkout?plan=${selectedPlan}&billing=${billingPeriod}`;
+    }
+}
+
+// Highlight selected billing period
+document.getElementById('monthlyCard').addEventListener('click', function() {
+    this.className = 'card border-primary';
+    document.getElementById('yearlyCard').className = 'card';
+});
+
+document.getElementById('yearlyCard').addEventListener('click', function() {
+    this.className = 'card border-primary';
+    document.getElementById('monthlyCard').className = 'card';
+});
+</script>
+{% endblock %} 

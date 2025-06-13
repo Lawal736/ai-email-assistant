@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Crypto Payment - USDT{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-gradient-primary text-white text-center py-4">
+                    <h3 class="mb-0">
+                        <i class="fas fa-coins me-2"></i>
+                        USDT Payment
+                    </h3>
+                    <p class="mb-0 mt-2">Pay with USDT (ERC20) on Ethereum Network</p>
+                </div>
+                
+                <div class="card-body p-5">
+                    <!-- Plan Summary -->
+                    <div class="alert alert-info">
+                        <h5 class="alert-heading">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Plan Summary
+                        </h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Plan:</strong> {{ plan.name|title }}
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Amount:</strong> ${{ "%.2f"|format(payment_session.amount_usd) }} USD
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <strong>USDT Amount:</strong> {{ "%.2f"|format(payment_session.amount_usdt) }} USDT
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Payment ID:</strong> <code>{{ payment_session.payment_id }}</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Instructions -->
+                    <div class="payment-instructions mb-4">
+                        <h5 class="text-primary mb-3">
+                            <i class="fas fa-arrow-right me-2"></i>
+                            Payment Instructions
+                        </h5>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card border-primary">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-wallet me-2"></i>
+                                            Send USDT to:
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="input-group">
+                                            <input type="text" 
+                                                   class="form-control font-monospace" 
+                                                   id="usdt-address" 
+                                                   value="{{ payment_session.usdt_address }}" 
+                                                   readonly>
+                                            <button class="btn btn-outline-primary" 
+                                                    type="button" 
+                                                    onclick="copyToClipboard('usdt-address')">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                        <small class="text-muted">
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            ERC20 USDT on Ethereum Mainnet
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <div class="card border-success">
+                                    <div class="card-header bg-success text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-coins me-2"></i>
+                                            Amount to Send:
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="input-group">
+                                            <input type="text" 
+                                                   class="form-control font-monospace text-center" 
+                                                   id="usdt-amount" 
+                                                   value="{{ "%.2f"|format(payment_session.amount_usdt) }}" 
+                                                   readonly>
+                                            <span class="input-group-text">USDT</span>
+                                        </div>
+                                        <small class="text-muted">
+                                            <i class="fas fa-clock me-1"></i>
+                                            Session expires in <span id="countdown">60:00</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Verification -->
+                    <div class="payment-verification">
+                        <h5 class="text-success mb-3">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Verify Payment
+                        </h5>
+                        
+                        <form id="verification-form">
+                            <div class="mb-3">
+                                <label for="wallet-address" class="form-label">
+                                    <i class="fas fa-wallet me-2"></i>
+                                    Your Wallet Address
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="wallet-address" 
+                                       name="wallet_address"
+                                       placeholder="0x..." 
+                                       required>
+                                <div class="form-text">
+                                    Enter the wallet address you used to send the USDT payment
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="submit" 
+                                        class="btn btn-success btn-lg" 
+                                        id="verify-btn">
+                                    <i class="fas fa-check me-2"></i>
+                                    Verify Payment
+                                </button>
+                                
+                                <button type="button" 
+                                        class="btn btn-outline-secondary" 
+                                        onclick="window.location.href='{{ url_for('pricing') }}'">
+                                    <i class="fas fa-arrow-left me-2"></i>
+                                    Back to Pricing
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Important Notes -->
+                    <div class="alert alert-warning mt-4">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Important Notes
+                        </h6>
+                        <ul class="mb-0">
+                            <li>Only send USDT (ERC20) on Ethereum mainnet</li>
+                            <li>Ensure you're sending to the exact address shown above</li>
+                            <li>Payment verification may take a few minutes</li>
+                            <li>Keep your transaction hash for reference</li>
+                            <li>Session expires in 1 hour for security</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Verifying Payment...</h5>
+                <p class="text-muted">Please wait while we verify your USDT payment</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let countdownInterval;
+
+function startCountdown() {
+    const expiresAt = {{ payment_session.expires_at }};
+    const now = Math.floor(Date.now() / 1000);
+    let timeLeft = expiresAt - now;
+    
+    countdownInterval = setInterval(() => {
+        if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+            document.getElementById('countdown').innerHTML = 'EXPIRED';
+            document.getElementById('verify-btn').disabled = true;
+            return;
+        }
+        
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        document.getElementById('countdown').innerHTML = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        timeLeft--;
+    }, 1000);
+}
+
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    element.select();
+    element.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    
+    // Show feedback
+    const button = element.nextElementSibling;
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i>';
+    button.classList.remove('btn-outline-primary');
+    button.classList.add('btn-success');
+    
+    setTimeout(() => {
+        button.innerHTML = originalHTML;
+        button.classList.remove('btn-success');
+        button.classList.add('btn-outline-primary');
+    }, 2000);
+}
+
+document.getElementById('verification-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const walletAddress = document.getElementById('wallet-address').value.trim();
+    if (!walletAddress) {
+        alert('Please enter your wallet address');
+        return;
+    }
+    
+    // Show loading modal
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    loadingModal.show();
+    
+    try {
+        const response = await fetch('{{ url_for("verify_crypto_payment") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                'wallet_address': walletAddress
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Success
+            loadingModal.hide();
+            alert(result.message);
+            window.location.href = result.redirect;
+        } else {
+            // Error
+            loadingModal.hide();
+            alert('Verification failed: ' + result.error);
+        }
+    } catch (error) {
+        loadingModal.hide();
+        alert('An error occurred during verification: ' + error.message);
+    }
+});
+
+// Start countdown when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    startCountdown();
+});
+</script>
+{% endblock %} 
