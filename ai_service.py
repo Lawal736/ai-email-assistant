@@ -1,512 +1,343 @@
 import os
 import json
-from openai import OpenAI
-from typing import List, Dict, Any
+import requests
+from typing import Dict, List, Optional
+from dotenv import load_dotenv
 
-class AIService:
-    """Service class for AI-powered email analysis using OpenAI"""
+load_dotenv()
+
+class HybridAIService:
+    """
+    Hybrid AI service that intelligently routes requests between Claude Sonnet and Claude Haiku
+    based on email complexity and cost optimization.
+    """
     
     def __init__(self):
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
+        self.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        self.openai_api_key = os.getenv('OPENAI_API_KEY')
         
-        self.client = OpenAI(api_key=api_key)
-        # Try gpt-4 first, fallback to gpt-3.5-turbo
-        self.model = "gpt-3.5-turbo"  # More accessible model
-    
-    def _is_quota_exceeded(self, error):
-        """Check if the error is due to quota exceeded"""
-        if hasattr(error, 'response') and error.response:
-            return error.response.status_code == 429
-        return False
-    
-    def _generate_fallback_summary(self, emails: List[Dict[str, Any]]) -> str:
-        """Generate a basic summary without AI when quota is exceeded"""
-        if not emails:
-            return "No emails to summarize."
+        # Model configurations
+        self.models = {
+            'claude_sonnet': 'claude-3-5-sonnet-20241022',
+            'claude_haiku': 'claude-3-haiku-20240307',
+            'gpt_fallback': 'gpt-3.5-turbo'
+        }
         
-        # Count emails by type and priority
-        email_count = len(emails)
-        high_priority = len([e for e in emails if e.get('priority') == 'high'])
-        medium_priority = len([e for e in emails if e.get('priority') == 'medium'])
-        work_emails = len([e for e in emails if e.get('type') == 'work'])
-        personal_emails = len([e for e in emails if e.get('type') == 'personal'])
+        # Complexity thresholds
+        self.complexity_threshold = 500  # characters
+        self.max_tokens = {
+            'claude_sonnet': 4000,
+            'claude_haiku': 2000,
+            'gpt_fallback': 1000
+        }
         
-        summary = f"""
-<div class="fallback-summary">
-    <div class="alert alert-warning mb-3">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Daily Email Summary</strong> (AI Analysis Unavailable)
-    </div>
-    
-    <div class="summary-section mb-3">
-        <h6 class="fw-bold text-primary mb-2">
-            <i class="fas fa-chart-pie me-2"></i>Email Overview
-        </h6>
-        <div class="row">
-            <div class="col-md-6">
-                <ul class="list-unstyled">
-                    <li><i class="fas fa-envelope me-2 text-primary"></i><strong>Total emails:</strong> {email_count}</li>
-                    <li><i class="fas fa-exclamation-triangle me-2 text-danger"></i><strong>High priority:</strong> {high_priority}</li>
-                    <li><i class="fas fa-exclamation-circle me-2 text-warning"></i><strong>Medium priority:</strong> {medium_priority}</li>
-                </ul>
-            </div>
-            <div class="col-md-6">
-                <ul class="list-unstyled">
-                    <li><i class="fas fa-briefcase me-2 text-info"></i><strong>Work-related:</strong> {work_emails}</li>
-                    <li><i class="fas fa-user me-2 text-success"></i><strong>Personal:</strong> {personal_emails}</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    
-    <div class="summary-section mb-3">
-        <h6 class="fw-bold text-info mb-2">
-            <i class="fas fa-search me-2"></i>Key Insights
-        </h6>
-        <ul class="list-unstyled">
-            <li><i class="fas fa-clock me-2 text-danger"></i>You have <strong>{high_priority}</strong> urgent emails that need immediate attention</li>
-            <li><i class="fas fa-briefcase me-2 text-info"></i><strong>{work_emails}</strong> work-related emails require professional responses</li>
-            <li><i class="fas fa-user me-2 text-success"></i><strong>{personal_emails}</strong> personal emails for your attention</li>
-        </ul>
-    </div>
-    
-    <div class="summary-section mb-3">
-        <h6 class="fw-bold text-success mb-2">
-            <i class="fas fa-lightbulb me-2"></i>Recommendation
-        </h6>
-        <div class="alert alert-success">
-            <i class="fas fa-arrow-up me-2"></i>
-            Focus on high-priority emails first, then work-related communications.
-        </div>
-    </div>
-    
-    <div class="alert alert-secondary">
-        <i class="fas fa-info-circle me-2"></i>
-        <small><em>Note: AI analysis is currently unavailable due to API quota limits. Please check your OpenAI billing or upgrade your plan for enhanced AI features.</em></small>
-    </div>
-</div>
+        # Cost optimization settings
+        self.use_haiku_for_simple = True
+        self.use_sonnet_for_complex = True
+        self.fallback_to_openai = True
+        
+    def _calculate_complexity(self, email_content: str) -> Dict:
         """
+        Calculate email complexity based on multiple factors.
+        """
+        content = email_content.lower()
         
-        return summary.strip()
+        complexity_score = 0
+        factors = {
+            'length': len(email_content),
+            'sentences': email_content.count('.') + email_content.count('!') + email_content.count('?'),
+            'questions': content.count('?'),
+            'action_words': sum(1 for word in ['urgent', 'asap', 'deadline', 'important', 'critical', 'review', 'approve', 'decide'] if word in content),
+            'technical_terms': sum(1 for word in ['api', 'database', 'server', 'code', 'bug', 'feature', 'deployment', 'integration'] if word in content),
+            'emotional_intensity': sum(1 for word in ['frustrated', 'concerned', 'excited', 'disappointed', 'pleased', 'worried'] if word in content)
+        }
+        
+        # Weighted complexity calculation
+        complexity_score = (
+            factors['length'] * 0.3 +
+            factors['sentences'] * 10 +
+            factors['questions'] * 20 +
+            factors['action_words'] * 30 +
+            factors['technical_terms'] * 25 +
+            factors['emotional_intensity'] * 15
+        )
+        
+        return {
+            'score': complexity_score,
+            'factors': factors,
+            'is_complex': complexity_score > self.complexity_threshold,
+            'recommended_model': 'claude_sonnet' if complexity_score > self.complexity_threshold else 'claude_haiku'
+        }
     
-    def generate_daily_summary(self, emails: List[Dict[str, Any]]) -> str:
-        """Generate a comprehensive daily email summary"""
-        if not emails:
-            return "No emails to summarize."
+    def _call_claude_api(self, model: str, messages: List[Dict], max_tokens: int = None) -> Dict:
+        """
+        Make API call to Claude models.
+        """
+        if not self.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
         
-        # Prepare email data for AI analysis
+        if max_tokens is None:
+            max_tokens = self.max_tokens.get(model, 2000)
+        
+        headers = {
+            "x-api-key": self.anthropic_api_key,
+            "content-type": "application/json",
+            "anthropic-version": "2023-06-01"
+        }
+        
+        # Convert OpenAI-style messages to Claude format
+        system_message = ""
+        user_messages = []
+        
+        for msg in messages:
+            if msg['role'] == 'system':
+                system_message = msg['content']
+            elif msg['role'] == 'user':
+                user_messages.append(msg['content'])
+        
+        # Combine user messages
+        user_content = "\n\n".join(user_messages)
+        
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": user_content
+                }
+            ]
+        }
+        
+        if system_message:
+            payload["system"] = system_message
+        
+        try:
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Claude API error: {str(e)}")
+    
+    def _call_openai_api(self, messages: List[Dict], max_tokens: int = 1000) -> Dict:
+        """
+        Fallback to OpenAI API if Claude fails.
+        """
+        if not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY not found in environment variables")
+        
+        headers = {
+            "Authorization": f"Bearer {self.openai_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": self.models['gpt_fallback'],
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.7
+        }
+        
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"OpenAI API error: {str(e)}")
+    
+    def _extract_response_content(self, response: Dict, provider: str) -> str:
+        """
+        Extract content from API response based on provider.
+        """
+        if provider == 'claude':
+            return response['content'][0]['text']
+        elif provider == 'openai':
+            return response['choices'][0]['message']['content']
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
+    
+    def analyze_email(self, email_content: str, analysis_type: str = "summary") -> Dict:
+        """
+        Analyze email using hybrid approach with intelligent model selection.
+        """
+        # Calculate complexity
+        complexity = self._calculate_complexity(email_content)
+        
+        # Determine which model to use
+        if complexity['is_complex'] and self.use_sonnet_for_complex:
+            model = self.models['claude_sonnet']
+            model_name = 'claude_sonnet'
+        elif not complexity['is_complex'] and self.use_haiku_for_simple:
+            model = self.models['claude_haiku']
+            model_name = 'claude_haiku'
+        else:
+            model = self.models['claude_sonnet']
+            model_name = 'claude_sonnet'
+        
+        # Prepare messages based on analysis type
+        if analysis_type == "summary":
+            system_prompt = """You are an AI email assistant. Analyze the email and provide a concise summary with key points, action items, and recommendations. Focus on the most important information."""
+        elif analysis_type == "action_items":
+            system_prompt = """Extract specific action items from the email. List them clearly with priorities and deadlines if mentioned."""
+        elif analysis_type == "recommendations":
+            system_prompt = """Provide smart response recommendations for this email. Suggest professional, helpful, and actionable responses."""
+        else:
+            system_prompt = """Analyze this email and provide insights, key points, and recommendations."""
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Email content:\n\n{email_content}"}
+        ]
+        
+        try:
+            # Try Claude first
+            response = self._call_claude_api(model, messages)
+            content = self._extract_response_content(response, 'claude')
+            
+            return {
+                "success": True,
+                "content": content,
+                "model_used": model_name,
+                "complexity": complexity,
+                "provider": "claude",
+                "cost_optimized": model_name == 'claude_haiku'
+            }
+            
+        except Exception as claude_error:
+            # Fallback to OpenAI if Claude fails
+            if self.fallback_to_openai:
+                try:
+                    response = self._call_openai_api(messages)
+                    content = self._extract_response_content(response, 'openai')
+                    
+                    return {
+                        "success": True,
+                        "content": content,
+                        "model_used": "gpt_fallback",
+                        "complexity": complexity,
+                        "provider": "openai",
+                        "fallback_used": True,
+                        "claude_error": str(claude_error)
+                    }
+                except Exception as openai_error:
+                    return {
+                        "success": False,
+                        "error": f"Both Claude and OpenAI failed. Claude: {claude_error}, OpenAI: {openai_error}",
+                        "complexity": complexity
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": f"Claude API failed: {claude_error}",
+                    "complexity": complexity
+                }
+    
+    def generate_daily_summary(self, emails: List[Dict]) -> Dict:
+        """
+        Generate daily summary using the most appropriate model based on email volume and complexity.
+        """
+        total_complexity = sum(self._calculate_complexity(email.get('content', ''))['score'] for email in emails)
+        avg_complexity = total_complexity / len(emails) if emails else 0
+        
+        # Use Sonnet for complex summaries, Haiku for simple ones
+        if avg_complexity > self.complexity_threshold or len(emails) > 10:
+            model = self.models['claude_sonnet']
+            model_name = 'claude_sonnet'
+        else:
+            model = self.models['claude_haiku']
+            model_name = 'claude_haiku'
+        
+        system_prompt = """You are an AI email assistant. Create a comprehensive daily summary of the emails provided. Include:
+1. Key themes and topics
+2. Important action items
+3. Urgent matters requiring attention
+4. Recommendations for follow-up
+Format the summary in a clear, structured way."""
+        
         email_summaries = []
         for email in emails:
-            summary = f"""
-            From: {email['sender']}
-            Subject: {email['subject']}
-            Type: {email['type']}
-            Priority: {email['priority']}
-            Snippet: {email['snippet'][:200]}...
-            """
-            email_summaries.append(summary)
+            email_summaries.append(f"From: {email.get('sender', 'Unknown')}\nSubject: {email.get('subject', 'No subject')}\nContent: {email.get('content', '')[:500]}...")
         
-        prompt = f"""
-        You are an AI email assistant. Analyze the following emails from today and provide a comprehensive daily summary.
+        user_content = f"Please analyze these {len(emails)} emails and provide a daily summary:\n\n" + "\n\n---\n\n".join(email_summaries)
         
-        Focus on:
-        1. Overall email volume and patterns
-        2. Key themes and topics
-        3. Urgent matters that need attention
-        4. Important deadlines or meetings
-        5. Communication patterns with different senders
-        
-        Emails to analyze:
-        {chr(10).join(email_summaries)}
-        
-        Please provide a clear, concise summary that helps the user understand their email landscape for the day.
-        Format the response in a professional but friendly tone.
-        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful email assistant that provides clear, actionable summaries."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500,
-                temperature=0.7
-            )
-            
-            return response.choices[0].message.content.strip()
-        
-        except Exception as e:
-            print(f"Error generating daily summary: {e}")
-            if self._is_quota_exceeded(e):
-                return self._generate_fallback_summary(emails)
-            return "Unable to generate summary due to an error."
-    
-    def _generate_fallback_action_items(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate basic action items without AI when quota is exceeded"""
-        action_items = []
-        
-        for email in emails:
-            # Skip low-priority emails for action items
-            if email['priority'] == 'low' and email['type'] in ['newsletter', 'other']:
-                continue
-            
-            # Create basic action item based on email priority and type
-            action_description = f"Review email from {email['sender']} regarding '{email['subject']}'"
-            
-            if email['priority'] == 'high':
-                action_description += " - <strong>URGENT:</strong> Requires immediate attention"
-            elif email['priority'] == 'medium':
-                action_description += " - Respond within 24 hours"
-            
-            # Create HTML formatted action items
-            action_items.append({
-                'email_id': email['id'],
-                'email_subject': email['subject'],
-                'email_sender': email['sender'],
-                'action_items': f"""
-                <div class="action-item-content">
-                    <div class="action-main">
-                        <i class="fas fa-tasks me-2 text-primary"></i>
-                        {action_description}
-                    </div>
-                    <div class="action-details mt-2">
-                        <span class="badge priority-{email['priority']} me-2">
-                            <i class="fas fa-flag me-1"></i>Priority: {email['priority'].title()}
-                        </span>
-                        <span class="badge bg-secondary">
-                            <i class="fas fa-tag me-1"></i>Type: {email['type'].title()}
-                        </span>
-                    </div>
-                </div>
-                """,
-                'priority': email['priority'],
-                'type': email['type']
-            })
-        
-        return action_items
-    
-    def extract_action_items(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Extract actionable items from emails"""
-        if not emails:
-            return []
-        
-        action_items = []
-        
-        for email in emails:
-            # Skip low-priority emails for action items
-            if email['priority'] == 'low' and email['type'] in ['newsletter', 'other']:
-                continue
-            
-            prompt = f"""
-            Analyze this email and extract any actionable items or tasks that the recipient needs to do.
-            
-            Email Details:
-            From: {email['sender']}
-            Subject: {email['subject']}
-            Body: {email['body'][:1000]}...
-            
-            For each action item, provide:
-            1. A clear, actionable description
-            2. Priority level (high/medium/low)
-            3. Estimated time to complete
-            4. Any deadlines mentioned
-            5. Type of action (reply, follow-up, task, meeting, etc.)
-            
-            If there are no clear action items, respond with "No action items found."
-            Otherwise, provide a structured list of action items.
-            """
-            
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": "You are an AI assistant that extracts actionable items from emails."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=300,
-                    temperature=0.5
-                )
-                
-                content = response.choices[0].message.content.strip()
-                
-                if "No action items found" not in content:
-                    action_items.append({
-                        'email_id': email['id'],
-                        'email_subject': email['subject'],
-                        'email_sender': email['sender'],
-                        'action_items': content,
-                        'priority': email['priority'],
-                        'type': email['type']
-                    })
-            
-            except Exception as e:
-                print(f"Error extracting action items from email {email['id']}: {e}")
-                if self._is_quota_exceeded(e):
-                    # Add basic action item for high/medium priority emails
-                    if email['priority'] in ['high', 'medium']:
-                        action_items.append({
-                            'email_id': email['id'],
-                            'email_subject': email['subject'],
-                            'email_sender': email['sender'],
-                            'action_items': f"• Review email from {email['sender']} regarding '{email['subject']}'\n• Priority: {email['priority']}\n• Type: {email['type']}",
-                            'priority': email['priority'],
-                            'type': email['type']
-                        })
-                continue
-        
-        # If no AI-generated action items, use fallback
-        if not action_items:
-            return self._generate_fallback_action_items(emails)
-        
-        return action_items
-    
-    def _generate_fallback_recommendations(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate basic response recommendations without AI when quota is exceeded"""
-        recommendations = []
-        
-        for email in emails:
-            # Skip newsletters and low-priority emails
-            if email['type'] == 'newsletter' or email['priority'] == 'low':
-                continue
-            
-            # Create basic recommendation based on email characteristics
-            if email['priority'] == 'high':
-                recommendation = f"""
-                <div class="recommendation-content">
-                    <div class="recommendation-main">
-                        <i class="fas fa-exclamation-triangle me-2 text-danger"></i>
-                        <strong>URGENT:</strong> Respond immediately to {email['sender']} regarding '{email['subject']}'
-                    </div>
-                    <div class="recommendation-details mt-2">
-                        <p class="mb-1"><i class="fas fa-comment me-2 text-primary"></i>Use professional tone and address the urgency</p>
-                        <p class="mb-0"><i class="fas fa-clock me-2 text-warning"></i>Response time: Immediate</p>
-                    </div>
-                </div>
-                """
-            elif email['type'] == 'work':
-                recommendation = f"""
-                <div class="recommendation-content">
-                    <div class="recommendation-main">
-                        <i class="fas fa-briefcase me-2 text-info"></i>
-                        <strong>Professional response needed</strong> for {email['sender']} regarding '{email['subject']}'
-                    </div>
-                    <div class="recommendation-details mt-2">
-                        <p class="mb-1"><i class="fas fa-comment me-2 text-primary"></i>Use appropriate business tone</p>
-                        <p class="mb-0"><i class="fas fa-clock me-2 text-warning"></i>Response time: Within 24 hours</p>
-                    </div>
-                </div>
-                """
-            else:
-                recommendation = f"""
-                <div class="recommendation-content">
-                    <div class="recommendation-main">
-                        <i class="fas fa-user me-2 text-success"></i>
-                        <strong>Consider responding</strong> to {email['sender']} regarding '{email['subject']}'
-                    </div>
-                    <div class="recommendation-details mt-2">
-                        <p class="mb-1"><i class="fas fa-comment me-2 text-primary"></i>Use friendly tone</p>
-                        <p class="mb-0"><i class="fas fa-clock me-2 text-warning"></i>Response time: Within 48 hours</p>
-                    </div>
-                </div>
-                """
-            
-            recommendations.append({
-                'email_id': email['id'],
-                'email_subject': email['subject'],
-                'email_sender': email['sender'],
-                'recommendations': recommendation,
-                'priority': email['priority'],
-                'type': email['type']
-            })
-        
-        return recommendations
-    
-    def generate_response_recommendations(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate response recommendations for emails"""
-        if not emails:
-            return []
-        
-        recommendations = []
-        
-        for email in emails:
-            # Skip newsletters and low-priority emails
-            if email['type'] == 'newsletter' or email['priority'] == 'low':
-                continue
-            
-            prompt = f"""
-            Analyze this email and provide response recommendations for the recipient.
-            
-            Email Details:
-            From: {email['sender']}
-            Subject: {email['subject']}
-            Body: {email['body'][:1000]}...
-            Type: {email['type']}
-            Priority: {email['priority']}
-            
-            Provide:
-            1. Whether a response is needed (yes/no/maybe)
-            2. Recommended response tone (professional, friendly, formal, casual)
-            3. Key points to address in the response
-            4. Suggested response structure
-            5. Any questions that should be asked
-            6. Recommended response time (immediate, within 24 hours, within a week)
-            
-            Format your response in a clear, structured way.
-            """
-            
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": "You are an AI assistant that provides email response recommendations."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=400,
-                    temperature=0.6
-                )
-                
-                content = response.choices[0].message.content.strip()
-                
-                recommendations.append({
-                    'email_id': email['id'],
-                    'email_subject': email['subject'],
-                    'email_sender': email['sender'],
-                    'recommendations': content,
-                    'priority': email['priority'],
-                    'type': email['type']
-                })
-            
-            except Exception as e:
-                print(f"Error generating recommendations for email {email['id']}: {e}")
-                if self._is_quota_exceeded(e):
-                    # Add basic recommendation for high/medium priority emails
-                    if email['priority'] in ['high', 'medium']:
-                        recommendations.append({
-                            'email_id': email['id'],
-                            'email_subject': email['subject'],
-                            'email_sender': email['sender'],
-                            'recommendations': f"Consider responding to {email['sender']} regarding '{email['subject']}'. Priority: {email['priority']}, Type: {email['type']}",
-                            'priority': email['priority'],
-                            'type': email['type']
-                        })
-                continue
-        
-        # If no AI-generated recommendations, use fallback
-        if not recommendations:
-            return self._generate_fallback_recommendations(emails)
-        
-        return recommendations
-    
-    def generate_quick_response(self, email: Dict[str, Any], response_type: str = "professional") -> str:
-        """Generate a quick response draft for a specific email"""
-        prompt = f"""
-        Generate a {response_type} email response to this email:
-        
-        From: {email['sender']}
-        Subject: {email['subject']}
-        Body: {email['body'][:800]}...
-        
-        Requirements:
-        1. Keep it concise and professional
-        2. Address the main points from the original email
-        3. Use appropriate tone for the context
-        4. Include a proper greeting and closing
-        """
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an AI assistant that generates professional email responses."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=300,
-                temperature=0.7
-            )
-            
-            return response.choices[0].message.content.strip()
-        
-        except Exception as e:
-            print(f"Error generating quick response: {e}")
-            if self._is_quota_exceeded(e):
-                return f"""
-Dear {email['sender'].split('<')[0].strip()},
-
-Thank you for your email regarding "{email['subject']}".
-
-I have received your message and will review it shortly. I appreciate you reaching out.
-
-Best regards,
-[Your name]
-
-*Note: This is a basic response template. Please customize it based on the email content.*
-                """.strip()
-            return "Unable to generate response due to an error."
-    
-    def analyze_email_sentiment(self, email: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze the sentiment and tone of an email"""
-        prompt = f"""
-        Analyze the sentiment and tone of this email:
-        
-        From: {email['sender']}
-        Subject: {email['subject']}
-        Body: {email['body'][:500]}...
-        
-        Provide analysis for:
-        1. Overall sentiment (positive, negative, neutral)
-        2. Tone (formal, informal, urgent, friendly, etc.)
-        3. Emotional indicators
-        4. Urgency level
-        5. Professional vs personal nature
-        """
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an AI assistant that analyzes email sentiment and tone."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=200,
-                temperature=0.3
-            )
-            
-            analysis = response.choices[0].message.content.strip()
+            response = self._call_claude_api(model, messages, max_tokens=3000)
+            content = self._extract_response_content(response, 'claude')
             
             return {
-                'email_id': email['id'],
-                'analysis': analysis,
-                'sender': email['sender'],
-                'subject': email['subject']
+                "success": True,
+                "content": content,
+                "model_used": model_name,
+                "email_count": len(emails),
+                "avg_complexity": avg_complexity,
+                "provider": "claude"
             }
-        
-        except Exception as e:
-            print(f"Error analyzing email sentiment: {e}")
-            if self._is_quota_exceeded(e):
-                # Basic sentiment analysis based on keywords
-                body_lower = email.get('body', '').lower()
-                subject_lower = email.get('subject', '').lower()
-                
-                if any(word in body_lower or word in subject_lower for word in ['urgent', 'asap', 'emergency', 'critical']):
-                    sentiment = "negative/urgent"
-                elif any(word in body_lower or word in subject_lower for word in ['thank', 'appreciate', 'great', 'good']):
-                    sentiment = "positive"
-                else:
-                    sentiment = "neutral"
-                
-                return {
-                    'email_id': email['id'],
-                    'analysis': f"Basic analysis: Sentiment appears {sentiment}. Priority: {email.get('priority', 'unknown')}. Type: {email.get('type', 'unknown')}",
-                    'sender': email['sender'],
-                    'subject': email['subject']
-                }
             
-            return {
-                'email_id': email['id'],
-                'analysis': "Unable to analyze sentiment due to an error.",
-                'sender': email['sender'],
-                'subject': email['subject']
-            } 
+        except Exception as claude_error:
+            if self.fallback_to_openai:
+                try:
+                    response = self._call_openai_api(messages, max_tokens=2000)
+                    content = self._extract_response_content(response, 'openai')
+                    
+                    return {
+                        "success": True,
+                        "content": content,
+                        "model_used": "gpt_fallback",
+                        "email_count": len(emails),
+                        "avg_complexity": avg_complexity,
+                        "provider": "openai",
+                        "fallback_used": True
+                    }
+                except Exception as openai_error:
+                    return {
+                        "success": False,
+                        "error": f"Both APIs failed. Claude: {claude_error}, OpenAI: {openai_error}",
+                        "email_count": len(emails)
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": f"Claude API failed: {claude_error}",
+                    "email_count": len(emails)
+                }
+
+# Legacy OpenAI service for backward compatibility
+class AIService:
+    """
+    Legacy OpenAI service - kept for backward compatibility.
+    Consider migrating to HybridAIService for better cost optimization.
+    """
+    
+    def __init__(self):
+        self.api_key = os.getenv('OPENAI_API_KEY')
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY not found in environment variables")
+        
+        self.client = None  # Will be initialized if needed
+        self.model = "gpt-3.5-turbo"
+    
+    def analyze_email(self, email_content: str, analysis_type: str = "summary") -> Dict:
+        """Legacy method - use HybridAIService instead"""
+        return {"success": False, "error": "Legacy OpenAI service. Please use HybridAIService for better performance."}
+    
+    def generate_daily_summary(self, emails: List[Dict]) -> Dict:
+        """Legacy method - use HybridAIService instead"""
+        return {"success": False, "error": "Legacy OpenAI service. Please use HybridAIService for better performance."}
+
+# Default export
+AIService = HybridAIService 

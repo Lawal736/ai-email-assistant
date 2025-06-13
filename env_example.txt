@@ -1,6 +1,10 @@
 # Copy this file to .env and fill in your actual values
 
-# OpenAI API Configuration
+# AI API Configuration (Hybrid Approach)
+# Primary: Anthropic Claude (Sonnet for complex, Haiku for simple)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Fallback: OpenAI (if Claude fails)
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Flask Configuration
@@ -16,4 +20,10 @@ FLASK_DEBUG=1
 PORT=5001
 
 # Optional: Custom host (default is 0.0.0.0)
-HOST=0.0.0.0 
+HOST=0.0.0.0
+
+# AI Model Configuration (Optional)
+# COMPLEXITY_THRESHOLD=500  # Characters threshold for model selection
+# USE_HAIKU_FOR_SIMPLE=true  # Use Claude Haiku for simple emails
+# USE_SONNET_FOR_COMPLEX=true  # Use Claude Sonnet for complex emails
+# FALLBACK_TO_OPENAI=true  # Fallback to OpenAI if Claude fails 
