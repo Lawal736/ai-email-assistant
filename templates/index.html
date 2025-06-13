@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}AI Email Assistant - Smart Email Management{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <!-- Hero Section -->
+        <div class="text-center mb-5">
+            <div class="card">
+                <div class="card-body p-5">
+                    <h1 class="display-4 fw-bold mb-4">
+                        <i class="fas fa-robot text-primary me-3"></i>
+                        AI Email Assistant
+                    </h1>
+                    <p class="lead mb-4">
+                        Transform your email workflow with AI-powered insights, summaries, and response recommendations.
+                    </p>
+                    
+                    {% if session.get('gmail_authenticated') %}
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-tachometer-alt me-2"></i>
+                            Go to Dashboard
+                        </a>
+                    {% else %}
+                        <a href="{{ url_for('connect_gmail') }}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-envelope me-2"></i>
+                            Connect Gmail
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="fas fa-brain fa-3x text-primary"></i>
+                        </div>
+                        <h5 class="card-title">AI Summarization</h5>
+                        <p class="card-text">
+                            Get intelligent summaries of your daily emails with key insights and themes.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="fas fa-tasks fa-3x text-warning"></i>
+                        </div>
+                        <h5 class="card-title">Action Items</h5>
+                        <p class="card-text">
+                            Automatically extract actionable tasks and deadlines from your emails.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="fas fa-comments fa-3x text-success"></i>
+                        </div>
+                        <h5 class="card-title">Smart Responses</h5>
+                        <p class="card-text">
+                            Get AI-generated response recommendations tailored to each email.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="fas fa-shield-alt fa-3x text-info"></i>
+                        </div>
+                        <h5 class="card-title">Secure & Private</h5>
+                        <p class="card-text">
+                            Your emails are processed securely and never stored permanently.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- How It Works Section -->
+        <div class="card mb-5">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-cogs me-2"></i>
+                    How It Works
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-envelope-open fa-2x text-primary"></i>
+                            </div>
+                            <h5>1. Connect Gmail</h5>
+                            <p>Securely connect your Gmail account using OAuth2 authentication.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-magic fa-2x text-warning"></i>
+                            </div>
+                            <h5>2. AI Processing</h5>
+                            <p>Our AI analyzes your emails for summaries, action items, and response recommendations.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-chart-line fa-2x text-success"></i>
+                            </div>
+                            <h5>3. Get Insights</h5>
+                            <p>View your daily email summary with prioritized action items and smart response suggestions.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Benefits Section -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-star me-2"></i>
+                    Benefits
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <ul class="list-unstyled">
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                Save time with automated email analysis
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                Never miss important action items
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                Get professional response suggestions
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-unstyled">
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                Prioritize emails by importance
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                Understand email patterns and trends
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                Maintain security and privacy
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

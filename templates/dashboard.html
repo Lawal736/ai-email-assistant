@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Header -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <h1 class="h3 mb-2">
+                    <i class="fas fa-tachometer-alt text-primary me-2"></i>
+                    Email Dashboard
+                </h1>
+                <p class="text-muted mb-0">{{ date }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Summary -->
+    <div class="col-lg-8 mb-4">
+        <div class="card summary-card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Daily Summary
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-3 text-center">
+                        <div class="h4 text-primary">{{ emails|length }}</div>
+                        <small class="text-muted">Total Emails</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h4 text-warning">{{ action_items|length }}</div>
+                        <small class="text-muted">Action Items</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h4 text-success">{{ recommendations|length }}</div>
+                        <small class="text-muted">Recommendations</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h4 text-info">{{ emails|selectattr('priority', 'equalto', 'high')|list|length }}</div>
+                        <small class="text-muted">High Priority</small>
+                    </div>
+                </div>
+                
+                <div class="summary-content">
+                    <h6 class="fw-bold mb-2">AI Analysis:</h6>
+                    {% if summary and "AI Analysis Unavailable" in summary %}
+                        <div class="alert alert-warning mb-3">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>AI Features Limited:</strong> OpenAI API quota exceeded. Using basic analysis.
+                            <br><small class="text-muted">Upgrade your OpenAI plan or check billing for full AI features.</small>
+                        </div>
+                    {% endif %}
+                    <div class="summary-text">
+                        {{ summary|safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-bolt me-2"></i>
+                    Quick Actions
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="refreshData()">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        Refresh Data
+                    </button>
+                    <button class="btn btn-outline-success" onclick="exportSummary()">
+                        <i class="fas fa-download me-2"></i>
+                        Export Summary
+                    </button>
+                    <button class="btn btn-outline-info" onclick="showEmailStats()">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        View Statistics
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Items -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-tasks me-2"></i>
+                    Action Items
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if action_items %}
+                    {% for item in action_items %}
+                        <div class="action-item">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-1">{{ item.email_subject }}</h6>
+                                <span class="badge priority-{{ item.priority }}">{{ item.priority|title }}</span>
+                            </div>
+                            <p class="text-muted small mb-2">From: {{ item.email_sender }}</p>
+                            <div class="action-content">
+                                {{ item.action_items|safe }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted text-center py-3">
+                        <i class="fas fa-check-circle fa-2x mb-2"></i><br>
+                        No action items found for today!
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Response Recommendations -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-comments me-2"></i>
+                    Response Recommendations
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if recommendations %}
+                    {% for rec in recommendations %}
+                        <div class="recommendation">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-1">{{ rec.email_subject }}</h6>
+                                <span class="badge priority-{{ rec.priority }}">{{ rec.priority|title }}</span>
+                            </div>
+                            <p class="text-muted small mb-2">From: {{ rec.email_sender }}</p>
+                            <div class="recommendation-content">
+                                {{ rec.recommendations|safe }}
+                            </div>
+                            <button class="btn btn-sm btn-primary mt-2" onclick="generateResponse('{{ rec.email_id }}')">
+                                <i class="fas fa-magic me-1"></i>
+                                Generate Response
+                            </button>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted text-center py-3">
+                        <i class="fas fa-comments fa-2x mb-2"></i><br>
+                        No response recommendations for today!
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Emails -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-envelope me-2"></i>
+                    Recent Emails
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if emails %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Sender</th>
+                                    <th>Subject</th>
+                                    <th>Priority</th>
+                                    <th>Type</th>
+                                    <th>Time</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for email in emails[:10] %}
+                                    <tr class="email-card">
+                                        <td>
+                                            <strong>{{ email.sender_clean or email.sender }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ email.sender_domain }}</small>
+                                        </td>
+                                        <td>
+                                            <div class="fw-medium">{{ email.subject }}</div>
+                                            <small class="text-muted">{{ email.body_preview }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge priority-{{ email.priority }}">
+                                                {{ email.priority|title }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ email.type|title }}</span>
+                                        </td>
+                                        <td>
+                                            <small>{{ email.date.split('T')[1][:5] }}</small>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary" onclick="viewEmail('{{ email.id }}')">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button class="btn btn-outline-success" onclick="generateResponse('{{ email.id }}')">
+                                                    <i class="fas fa-reply"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted text-center py-4">
+                        <i class="fas fa-inbox fa-3x mb-3"></i><br>
+                        No emails found for today!
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Email Modal -->
+<div class="modal fade" id="emailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Email Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="emailModalBody">
+                <!-- Email content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="generateResponseFromModal()">
+                    <i class="fas fa-magic me-1"></i>
+                    Generate Response
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Response Modal -->
+<div class="modal fade" id="responseModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">AI Generated Response</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="responseContent">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" onclick="copyResponse()">
+                    <i class="fas fa-copy me-1"></i>
+                    Copy Response
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentEmailId = null;
+
+function refreshData() {
+    location.reload();
+}
+
+function exportSummary() {
+    const data = {
+        date: '{{ date }}',
+        summary: '{{ summary }}',
+        actionItems: {{ action_items|tojson }},
+        recommendations: {{ recommendations|tojson }},
+        emails: {{ emails|tojson }}
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `email-summary-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function showEmailStats() {
+    // This would show detailed email statistics
+    alert('Email statistics feature coming soon!');
+}
+
+function viewEmail(emailId) {
+    // Find email data
+    const emails = {{ emails|tojson }};
+    const email = emails.find(e => e.id === emailId);
+    
+    if (email) {
+        const modalBody = document.getElementById('emailModalBody');
+        modalBody.innerHTML = `
+            <div class="mb-3">
+                <strong>From:</strong> ${email.sender}<br>
+                <strong>Subject:</strong> ${email.subject}<br>
+                <strong>Date:</strong> ${email.date}<br>
+                <strong>Priority:</strong> <span class="badge priority-${email.priority}">${email.priority}</span><br>
+                <strong>Type:</strong> <span class="badge bg-secondary">${email.type}</span>
+            </div>
+            <div class="border-top pt-3">
+                <h6>Email Content:</h6>
+                <div class="bg-light p-3 rounded">
+                    ${email.body_clean || email.body}
+                </div>
+            </div>
+        `;
+        
+        currentEmailId = emailId;
+        new bootstrap.Modal(document.getElementById('emailModal')).show();
+    }
+}
+
+function generateResponse(emailId) {
+    currentEmailId = emailId;
+    new bootstrap.Modal(document.getElementById('responseModal')).show();
+    
+    // Show loading
+    document.getElementById('responseContent').innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p class="mt-2">Generating response...</p>
+        </div>
+    `;
+    
+    // This would call the AI service to generate a response
+    // For now, we'll show a placeholder
+    setTimeout(() => {
+        document.getElementById('responseContent').innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                AI response generation feature will be implemented with the backend API.
+            </div>
+            <div class="bg-light p-3 rounded">
+                <p>Dear [Sender],</p>
+                <p>Thank you for your email regarding [subject]. I appreciate you reaching out.</p>
+                <p>[AI-generated response content would appear here]</p>
+                <p>Best regards,<br>[Your name]</p>
+            </div>
+        `;
+    }, 2000);
+}
+
+function generateResponseFromModal() {
+    if (currentEmailId) {
+        generateResponse(currentEmailId);
+        bootstrap.Modal.getInstance(document.getElementById('emailModal')).hide();
+    }
+}
+
+function copyResponse() {
+    const responseText = document.getElementById('responseContent').textContent;
+    navigator.clipboard.writeText(responseText).then(() => {
+        alert('Response copied to clipboard!');
+    });
+}
+
+// Auto-refresh every 5 minutes
+setInterval(() => {
+    // Check if user is active
+    if (!document.hidden) {
+        // Refresh data silently
+        fetch('/api/summary')
+            .then(response => response.json())
+            .then(data => {
+                // Update summary if needed
+                console.log('Data refreshed');
+            })
+            .catch(error => console.log('Refresh failed:', error));
+    }
+}, 300000); // 5 minutes
+</script>
+{% endblock %} 

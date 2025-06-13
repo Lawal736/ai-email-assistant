@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Gmail Authentication - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body text-center p-5">
+                <div class="mb-4">
+                    <i class="fas fa-external-link-alt fa-3x text-primary"></i>
+                </div>
+                <h3 class="mb-3">Gmail Authentication</h3>
+                <p class="text-muted mb-4">
+                    You will be redirected to Google to authenticate your Gmail account.
+                    Please complete the authentication process and you'll be redirected back here.
+                </p>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Note:</strong> If you see a warning about the app not being verified, 
+                    this is normal for development. Click "Advanced" and then "Go to AI Email Assistant (unsafe)".
+                </div>
+
+                <div class="d-grid gap-2">
+                    <a href="{{ auth_url }}" class="btn btn-primary btn-lg" target="_blank">
+                        <i class="fas fa-external-link-alt me-2"></i>
+                        Open Google Authentication
+                    </a>
+                    <button onclick="checkAuthStatus()" class="btn btn-outline-primary">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        I've Completed Authentication
+                    </button>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Back to Home
+                    </a>
+                </div>
+
+                <div class="mt-4">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        The authentication window will open in a new tab. Complete the process there, then return here.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function checkAuthStatus() {
+    // Check if user is authenticated by trying to access dashboard
+    window.location.href = "{{ url_for('dashboard') }}";
+}
+
+// Auto-check every 5 seconds
+setInterval(function() {
+    fetch("{{ url_for('dashboard') }}")
+        .then(response => {
+            if (response.ok) {
+                window.location.href = "{{ url_for('dashboard') }}";
+            }
+        })
+        .catch(error => {
+            // User not authenticated yet, continue waiting
+        });
+}, 5000);
+</script>
+{% endblock %} 

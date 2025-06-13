@@ -1,0 +1,19 @@
+# Copy this file to .env and fill in your actual values
+
+# OpenAI API Configuration
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Flask Configuration
+FLASK_SECRET_KEY=your_secret_key_here
+FLASK_ENV=development
+FLASK_DEBUG=1
+
+# Gmail API Configuration
+# Note: credentials.json should be placed in project root directory
+# You can also set GOOGLE_CREDENTIALS as an environment variable for deployment
+
+# Optional: Custom port (default is 5001)
+PORT=5001
+
+# Optional: Custom host (default is 0.0.0.0)
+HOST=0.0.0.0 
