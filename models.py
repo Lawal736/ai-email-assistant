@@ -2,18 +2,27 @@ from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
+import threading
+import time
 
 class DatabaseManager:
     """Database manager for user authentication and payments"""
     
     def __init__(self, db_path='users.db'):
         self.db_path = db_path
+        self._lock = threading.Lock()
         self.init_database()
     
     def init_database(self):
         """Initialize database with required tables"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         cursor = conn.cursor()
+        
+        # Enable WAL mode for better concurrency
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.execute('PRAGMA cache_size=10000')
+        cursor.execute('PRAGMA temp_store=MEMORY')
         
         # Users table
         cursor.execute('''
@@ -123,8 +132,29 @@ class DatabaseManager:
         conn.close()
     
     def get_connection(self):
-        """Get database connection"""
-        return sqlite3.connect(self.db_path)
+        """Get database connection with proper timeout and retry logic"""
+        max_retries = 3
+        retry_delay = 0.1
+        
+        for attempt in range(max_retries):
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=30.0)
+                # Enable WAL mode for better concurrency
+                conn.execute('PRAGMA journal_mode=WAL')
+                conn.execute('PRAGMA synchronous=NORMAL')
+                return conn
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                    print(f"⚠️ Database locked, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    raise
+            except Exception as e:
+                print(f"❌ Database connection error: {e}")
+                raise
+        
+        raise sqlite3.OperationalError("Database connection failed after all retries")
 
 class User:
     """User model for authentication and subscription management"""
@@ -255,37 +285,125 @@ class User:
         print(f"🔍 [DEBUG] token_data length: {len(str(token_data)) if token_data else 0}")
         print(f"🔍 [DEBUG] gmail_email: {gmail_email}")
         
-        conn = self.db_manager.get_connection()
-        cursor = conn.cursor()
+        max_retries = 3
+        retry_delay = 0.1
         
-        # Always update both fields - if gmail_email is None, it will clear the field
-        cursor.execute('UPDATE users SET gmail_token = ?, gmail_email = ? WHERE id = ?', (token_data, gmail_email, user_id))
+        for attempt in range(max_retries):
+            try:
+                conn = self.db_manager.get_connection()
+                cursor = conn.cursor()
+                
+                # Always update both fields - if gmail_email is None, it will clear the field
+                cursor.execute('UPDATE users SET gmail_token = ?, gmail_email = ? WHERE id = ?', (token_data, gmail_email, user_id))
+                
+                rows_affected = cursor.rowcount
+                print(f"🔍 [DEBUG] Rows affected by update: {rows_affected}")
+                
+                conn.commit()
+                conn.close()
+                
+                print(f"✅ [DEBUG] Gmail token update completed for user_id: {user_id}")
+                return True
+                
+            except sqlite3.OperationalError as e:
+                conn.close() if 'conn' in locals() else None
+                if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                    print(f"⚠️ Database locked during update, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    print(f"❌ [DEBUG] Database error in update_gmail_token: {e}")
+                    raise
+            except Exception as e:
+                conn.close() if 'conn' in locals() else None
+                print(f"❌ [DEBUG] Error in update_gmail_token: {e}")
+                raise
         
-        rows_affected = cursor.rowcount
-        print(f"🔍 [DEBUG] Rows affected by update: {rows_affected}")
-        
-        conn.commit()
-        conn.close()
-        
-        print(f"✅ [DEBUG] Gmail token update completed for user_id: {user_id}")
+        print(f"❌ [DEBUG] Failed to update Gmail token after {max_retries} attempts")
+        return False
     
     def get_gmail_token(self, user_id):
-        """Get user's Gmail token"""
+        """Get user's Gmail token with retry logic"""
         print(f"🔍 [DEBUG] get_gmail_token called for user_id: {user_id}")
         
-        conn = self.db_manager.get_connection()
-        cursor = conn.cursor()
+        max_retries = 3
+        retry_delay = 0.1
         
-        cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
-        result = cursor.fetchone()
-        conn.close()
+        for attempt in range(max_retries):
+            try:
+                conn = self.db_manager.get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
+                result = cursor.fetchone()
+                conn.close()
+                
+                token_found = result[0] if result else None
+                print(f"🔍 [DEBUG] Token found: {'Yes' if token_found else 'No'}")
+                if token_found:
+                    print(f"🔍 [DEBUG] Token length: {len(str(token_found))}")
+                
+                return token_found
+                
+            except sqlite3.OperationalError as e:
+                conn.close() if 'conn' in locals() else None
+                if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                    print(f"⚠️ Database locked during retrieval, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    print(f"❌ [DEBUG] Database error in get_gmail_token: {e}")
+                    raise
+            except Exception as e:
+                conn.close() if 'conn' in locals() else None
+                print(f"❌ [DEBUG] Error in get_gmail_token: {e}")
+                raise
         
-        token_found = result[0] if result else None
-        print(f"🔍 [DEBUG] Token found: {'Yes' if token_found else 'No'}")
-        if token_found:
-            print(f"🔍 [DEBUG] Token length: {len(str(token_found))}")
+        print(f"❌ [DEBUG] Failed to get Gmail token after {max_retries} attempts")
+        return None
+    
+    def verify_gmail_token_persistence(self, user_id, expected_token_data=None):
+        """Verify that Gmail token was properly saved and can be retrieved"""
+        print(f"🔍 [DEBUG] verify_gmail_token_persistence called for user_id: {user_id}")
         
-        return token_found
+        # Wait a moment for any pending transactions
+        time.sleep(0.1)
+        
+        # Try to retrieve the token multiple times
+        for attempt in range(3):
+            token = self.get_gmail_token(user_id)
+            if token:
+                print(f"✅ [DEBUG] Token verification successful on attempt {attempt + 1}")
+                if expected_token_data:
+                    # Compare token data if provided
+                    try:
+                        import json
+                        if isinstance(token, str):
+                            token_dict = json.loads(token)
+                        else:
+                            token_dict = token
+                        
+                        if isinstance(expected_token_data, str):
+                            expected_dict = json.loads(expected_token_data)
+                        else:
+                            expected_dict = expected_token_data
+                        
+                        if token_dict.get('refresh_token') == expected_dict.get('refresh_token'):
+                            print("✅ [DEBUG] Token data matches expected value")
+                            return True
+                        else:
+                            print("⚠️ [DEBUG] Token data doesn't match expected value")
+                    except Exception as e:
+                        print(f"⚠️ [DEBUG] Could not compare token data: {e}")
+                
+                return True
+            else:
+                print(f"⚠️ [DEBUG] Token verification failed on attempt {attempt + 1}")
+                if attempt < 2:
+                    time.sleep(0.2)  # Wait before retry
+        
+        print("❌ [DEBUG] Token verification failed after all attempts")
+        return False
     
     def get_gmail_email(self, user_id):
         """Get user's linked Gmail email address"""
@@ -427,6 +545,49 @@ class User:
         cursor.execute('UPDATE password_reset_tokens SET used = 1 WHERE token = ?', (token,))
         conn.commit()
         conn.close()
+
+    def check_database_state(self, user_id):
+        """Check the current database state for debugging"""
+        print(f"🔍 [DEBUG] check_database_state called for user_id: {user_id}")
+        
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, email, gmail_email, gmail_token, 
+                       subscription_plan, subscription_status
+                FROM users WHERE id = ?
+            ''', (user_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                user_id, email, gmail_email, gmail_token, plan, status = result
+                print(f"🔍 [DEBUG] Database state for user {user_id}:")
+                print(f"   Email: {email}")
+                print(f"   Gmail Email: {gmail_email or 'None'}")
+                print(f"   Gmail Token: {'Present' if gmail_token else 'None'}")
+                print(f"   Plan: {plan}")
+                print(f"   Status: {status}")
+                
+                if gmail_token:
+                    try:
+                        import json
+                        token_data = json.loads(gmail_token)
+                        print(f"   Token has refresh_token: {'Yes' if token_data.get('refresh_token') else 'No'}")
+                    except:
+                        print("   Token is not valid JSON")
+                
+                return True
+            else:
+                print(f"❌ [DEBUG] User {user_id} not found in database")
+                return False
+                
+        except Exception as e:
+            print(f"❌ [DEBUG] Error checking database state: {e}")
+            return False
 
 class SubscriptionPlan:
     """Subscription plan model"""

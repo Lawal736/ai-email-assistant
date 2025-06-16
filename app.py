@@ -375,6 +375,10 @@ def dashboard():
     user_id = session.get('user_id')
     print(f"🔍 Dashboard - User ID: {user_id}")
     
+    # Check database state for debugging
+    if user_model:
+        user_model.check_database_state(user_id)
+    
     user = user_model.get_user_by_id(user_id) if user_model else None
     if user:
         session['subscription_plan'] = user.get('subscription_plan', 'free')
@@ -554,8 +558,19 @@ def oauth2callback():
             print(f"⚠️ Could not fetch Gmail email: {e}")
         
         if user_model and token_data:
-            user_model.update_gmail_token(user_id, json.dumps(token_data), gmail_email)
+            # Save the token
+            success = user_model.update_gmail_token(user_id, json.dumps(token_data), gmail_email)
             print("✅ Gmail token and email saved to database")
+            
+            # Verify the token was properly saved
+            if success:
+                verification_success = user_model.verify_gmail_token_persistence(user_id, token_data)
+                if verification_success:
+                    print("✅ Gmail token verification successful")
+                else:
+                    print("⚠️ Gmail token verification failed - token may not be persistent")
+            else:
+                print("❌ Failed to save Gmail token")
         else:
             print("❌ Failed to save token - user_model or token_data is None")
         
