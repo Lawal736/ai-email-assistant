@@ -372,7 +372,7 @@ def pricing():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    """Dashboard page with enhanced token recovery"""
+    """Dashboard page with enhanced token recovery and emergency user recovery"""
     user_id = session.get('user_id')
     print(f"🔍 Dashboard - User ID: {user_id}")
     
@@ -380,12 +380,34 @@ def dashboard():
     if user_model:
         user_model.check_database_connectivity()
         user_model.check_database_state(user_id)
+        
+        # EMERGENCY: Check for user/session mismatch and attempt recovery
+        session_data = {
+            'user_email': session.get('user_email'),
+            'user_name': session.get('user_name'), 
+            'subscription_plan': session.get('subscription_plan', 'free'),
+            'subscription_status': session.get('subscription_status', 'active')
+        }
+        
+        print(f"🔍 [DEBUG] Session data for recovery: {session_data}")
+        
+        mismatch_fixed = user_model.check_and_repair_user_session_mismatch(user_id, session_data)
+        if not mismatch_fixed:
+            print(f"🚨 [EMERGENCY] Critical: User {user_id} recovery failed - clearing session")
+            session.clear()
+            flash('Your account data was corrupted. Please log in again.', 'error')
+            return redirect(url_for('login'))
     
     user = user_model.get_user_by_id(user_id) if user_model else None
     if user:
         session['subscription_plan'] = user.get('subscription_plan', 'free')
         session['subscription_status'] = user.get('subscription_status', 'inactive')
         session['subscription_expires'] = user.get('subscription_expires')
+    else:
+        print(f"❌ [EMERGENCY] User {user_id} still not found after recovery attempt")
+        session.clear()
+        flash('Your account could not be recovered. Please contact support.', 'error')
+        return redirect(url_for('login'))
     
     # Check if Gmail service is available
     if not gmail_service:
@@ -1244,6 +1266,22 @@ def api_summary():
 def api_analyze_email():
     """API endpoint to analyze a single email with attachments"""
     user_id = session.get('user_id')
+    
+    # EMERGENCY: Check if user exists and recover if needed
+    if user_model:
+        session_data = {
+            'user_email': session.get('user_email'),
+            'user_name': session.get('user_name'), 
+            'subscription_plan': session.get('subscription_plan', 'free'),
+            'subscription_status': session.get('subscription_status', 'active')
+        }
+        
+        mismatch_fixed = user_model.check_and_repair_user_session_mismatch(user_id, session_data)
+        if not mismatch_fixed:
+            return jsonify({
+                'error': 'Your account data was corrupted. Please log in again.',
+                'requires_login': True
+            }), 401
     
     # Get user subscription info
     user = user_model.get_user_by_id(user_id) if user_model else None
@@ -2183,6 +2221,94 @@ def debug_repair_token():
                 'message': 'Token integrity repair failed - no token available to restore'
             })
             
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/debug/emergency-recovery', methods=['POST'])
+@login_required
+def debug_emergency_recovery():
+    """Emergency endpoint to recover missing user records"""
+    user_id = session.get('user_id')
+    
+    if not user_model:
+        return jsonify({'error': 'User model not available'}), 500
+    
+    try:
+        # Get session data
+        session_data = {
+            'user_email': session.get('user_email'),
+            'user_name': session.get('user_name'), 
+            'subscription_plan': session.get('subscription_plan', 'free'),
+            'subscription_status': session.get('subscription_status', 'active')
+        }
+        
+        print(f"🚨 [EMERGENCY] Manual recovery requested for user {user_id}")
+        print(f"🔍 [EMERGENCY] Session data: {session_data}")
+        
+        # Attempt emergency recovery
+        recovery_success = user_model.emergency_user_recovery(user_id, session_data)
+        
+        if recovery_success:
+            return jsonify({
+                'success': True,
+                'message': f'User {user_id} successfully recovered from session data',
+                'user_email': session_data.get('user_email'),
+                'recovery_method': 'emergency_session_reconstruction'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Emergency recovery failed for user {user_id}',
+                'session_data': session_data
+            })
+            
+    except Exception as e:
+        print(f"❌ [EMERGENCY] Manual recovery error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/debug/user-status')
+@login_required
+def debug_user_status():
+    """Enhanced debug endpoint to check user existence and session consistency"""
+    user_id = session.get('user_id')
+    
+    if not user_model:
+        return jsonify({'error': 'User model not available'}), 500
+    
+    try:
+        # Check if user exists in database
+        user_exists = user_model.ensure_user_integrity(user_id)
+        user_data = user_model.get_user_by_id(user_id) if user_exists else None
+        token_data = user_model.get_gmail_token(user_id) if user_exists else None
+        
+        # Get session data
+        session_info = {
+            'user_id': session.get('user_id'),
+            'user_email': session.get('user_email'),
+            'user_name': session.get('user_name'),
+            'subscription_plan': session.get('subscription_plan'),
+            'subscription_status': session.get('subscription_status'),
+            'gmail_authenticated': session.get('gmail_authenticated')
+        }
+        
+        status = {
+            'user_id': user_id,
+            'user_exists_in_db': user_exists,
+            'user_data_found': user_data is not None,
+            'token_found': token_data is not None,
+            'session_info': session_info,
+            'database_user_info': {
+                'email': user_data.get('email') if user_data else None,
+                'subscription_plan': user_data.get('subscription_plan') if user_data else None,
+                'gmail_email': user_data.get('gmail_email') if user_data else None,
+                'created_at': user_data.get('created_at') if user_data else None
+            } if user_data else None,
+            'issue_detected': not user_exists,
+            'recovery_possible': bool(session_info.get('user_email'))
+        }
+        
+        return jsonify(status)
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

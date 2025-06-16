@@ -871,6 +871,113 @@ class User:
             print(f"❌ [DEBUG] Error during token integrity repair: {e}")
             return False
 
+    def emergency_user_recovery(self, user_id, session_data=None):
+        """Emergency recovery for missing user records that exist in session"""
+        print(f"🚨 [EMERGENCY] Starting user recovery for user_id: {user_id}")
+        
+        try:
+            # First, double-check if user really doesn't exist
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Check if user exists with comprehensive query
+            cursor.execute('SELECT COUNT(*) FROM users WHERE id = ?', (user_id,))
+            user_count = cursor.fetchone()[0]
+            
+            if user_count > 0:
+                print(f"✅ [EMERGENCY] User {user_id} actually exists - false alarm")
+                conn.close()
+                return True
+            
+            print(f"🚨 [EMERGENCY] User {user_id} confirmed missing - attempting recovery")
+            
+            # Check if we have session data to reconstruct the user
+            if not session_data:
+                print(f"❌ [EMERGENCY] No session data provided for user recovery")
+                conn.close()
+                return False
+            
+            # Extract user info from session
+            email = session_data.get('user_email', f'recovered_user_{user_id}@unknown.com')
+            name = session_data.get('user_name', 'Recovered User')
+            plan = session_data.get('subscription_plan', 'free')
+            status = session_data.get('subscription_status', 'active')
+            
+            print(f"🔧 [EMERGENCY] Reconstructing user with email: {email}, name: {name}")
+            
+            # Create emergency user record
+            cursor.execute('BEGIN IMMEDIATE')
+            
+            cursor.execute('''
+                INSERT INTO users (id, email, password_hash, first_name, last_name, 
+                                 subscription_plan, subscription_status, subscription_expires,
+                                 created_at, last_login, is_active, api_usage_count, monthly_usage_limit)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, 0, 100)
+            ''', (
+                user_id, 
+                email, 
+                'EMERGENCY_RECOVERY_NO_PASSWORD',  # They'll need to reset password
+                name.split()[0] if name else 'Recovered',
+                ' '.join(name.split()[1:]) if len(name.split()) > 1 else 'User',
+                plan,
+                status
+            ))
+            
+            # Verify the insert worked
+            if cursor.rowcount > 0:
+                cursor.execute('COMMIT')
+                print(f"✅ [EMERGENCY] User {user_id} successfully recovered")
+                
+                # Verify the user can be retrieved
+                cursor.execute('SELECT id, email FROM users WHERE id = ?', (user_id,))
+                verification = cursor.fetchone()
+                
+                if verification:
+                    print(f"✅ [EMERGENCY] Recovery verified: {verification[1]}")
+                    conn.close()
+                    return True
+                else:
+                    print(f"❌ [EMERGENCY] Recovery verification failed")
+                    conn.close()
+                    return False
+            else:
+                cursor.execute('ROLLBACK')
+                print(f"❌ [EMERGENCY] User recovery insert failed")
+                conn.close()
+                return False
+                
+        except Exception as e:
+            if 'conn' in locals():
+                try:
+                    cursor.execute('ROLLBACK')
+                except:
+                    pass
+                conn.close()
+            print(f"❌ [EMERGENCY] User recovery failed: {e}")
+            return False
+    
+    def check_and_repair_user_session_mismatch(self, user_id, session_data=None):
+        """Check for and repair user/session mismatches"""
+        print(f"🔍 [DEBUG] Checking user/session mismatch for user_id: {user_id}")
+        
+        # First check if user exists
+        if not self.ensure_user_integrity(user_id):
+            print(f"⚠️ [DEBUG] User integrity check failed - attempting emergency recovery")
+            
+            if session_data:
+                recovery_success = self.emergency_user_recovery(user_id, session_data)
+                if recovery_success:
+                    print(f"✅ [DEBUG] Emergency recovery successful")
+                    return True
+                else:
+                    print(f"❌ [DEBUG] Emergency recovery failed")
+                    return False
+            else:
+                print(f"❌ [DEBUG] No session data for emergency recovery")
+                return False
+        
+        return True
+
 class SubscriptionPlan:
     """Subscription plan model"""
     
