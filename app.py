@@ -12,6 +12,7 @@ from document_processor import DocumentProcessor
 from models import DatabaseManager, User, SubscriptionPlan, PaymentRecord
 from payment_service import PaymentService
 from currency_service import currency_service
+import time
 
 # Load environment variables
 load_dotenv()
@@ -371,7 +372,7 @@ def pricing():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    """Dashboard page"""
+    """Dashboard page with enhanced token recovery"""
     user_id = session.get('user_id')
     print(f"🔍 Dashboard - User ID: {user_id}")
     
@@ -399,13 +400,36 @@ def dashboard():
                              date=datetime.now().strftime('%B %d, %Y'),
                              ai_processing=False)
     
-    # Check Gmail authentication
-    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
-    print(f"🔍 Gmail token from database: {'Found' if gmail_token else 'Not found'}")
+    # Enhanced Gmail token retrieval with recovery
+    gmail_token = None
+    token_recovery_attempted = False
+    
+    if user_model:
+        # First attempt to get token
+        gmail_token = user_model.get_gmail_token(user_id)
+        print(f"🔍 Gmail token from database: {'Found' if gmail_token else 'Not found'}")
+        
+        # If no token found, try recovery mechanisms
+        if not gmail_token and not token_recovery_attempted:
+            print("🔧 [DEBUG] Token not found, attempting recovery...")
+            token_recovery_attempted = True
+            
+            # Force database sync and check again
+            user_model.force_database_sync()
+            time.sleep(0.2)
+            gmail_token = user_model.get_gmail_token(user_id)
+            
+            if gmail_token:
+                print("✅ [DEBUG] Token recovered after database sync")
+            else:
+                print("❌ [DEBUG] Token recovery failed - redirecting to connect Gmail")
     
     if not gmail_token:
         print("❌ No Gmail token found in database")
-        flash('Please connect your Gmail account to continue.', 'warning')
+        if token_recovery_attempted:
+            flash('Your Gmail connection appears to be lost. Please reconnect your Gmail account.', 'error')
+        else:
+            flash('Please connect your Gmail account to continue.', 'warning')
         return redirect(url_for('connect_gmail'))
     
     try:
@@ -508,7 +532,7 @@ def start_gmail_auth():
 
 @app.route('/oauth2callback')
 def oauth2callback():
-    """Handle OAuth callback"""
+    """Handle OAuth callback with enhanced token persistence"""
     try:
         print("🔍 OAuth callback received")
         print(f"🔍 Session data: {dict(session)}")
@@ -548,29 +572,75 @@ def oauth2callback():
             print(f"⚠️ Could not fetch Gmail email: {e}")
         
         if user_model and token_data:
-            # Save the token
-            success = user_model.update_gmail_token(user_id, json.dumps(token_data), gmail_email)
-            print("✅ Gmail token and email saved to database")
+            # Enhanced token saving with multiple recovery attempts
+            token_data_json = json.dumps(token_data)
             
-            # Verify the token was properly saved
-            if success:
-                verification_success = user_model.verify_gmail_token_persistence(user_id, token_data)
-                if verification_success:
-                    print("✅ Gmail token verification successful")
+            # Attempt 1: Normal update
+            print("🔧 [DEBUG] Attempting normal token update...")
+            success = user_model.update_gmail_token(user_id, token_data_json, gmail_email)
+            
+            if not success:
+                print("⚠️ [DEBUG] Normal token update failed, attempting database repair...")
+                # Attempt 2: Force database sync and repair
+                user_model.force_database_sync()
+                repair_success = user_model.repair_user_token_integrity(user_id, token_data_json, gmail_email)
+                
+                if repair_success:
+                    print("✅ [DEBUG] Token repair successful")
+                    success = True
                 else:
-                    print("⚠️ Gmail token verification failed - token may not be persistent")
+                    print("❌ [DEBUG] Token repair failed, attempting final recovery...")
+                    # Attempt 3: Wait and retry with fresh connection
+                    time.sleep(1)  # Wait for any pending operations
+                    success = user_model.update_gmail_token(user_id, token_data_json, gmail_email)
+            
+            if success:
+                print("✅ Gmail token and email saved to database")
+                
+                # Enhanced verification with multiple attempts
+                print("🔧 [DEBUG] Performing enhanced token verification...")
+                verification_success = False
+                
+                for verification_attempt in range(3):
+                    # Force database sync before verification
+                    user_model.force_database_sync()
+                    time.sleep(0.2)  # Small delay to ensure sync
+                    
+                    verification_success = user_model.verify_gmail_token_persistence(user_id, token_data)
+                    if verification_success:
+                        print(f"✅ Gmail token verification successful on attempt {verification_attempt + 1}")
+                        break
+                    else:
+                        print(f"⚠️ Gmail token verification failed on attempt {verification_attempt + 1}")
+                        if verification_attempt < 2:
+                            # Try to repair again
+                            user_model.repair_user_token_integrity(user_id, token_data_json, gmail_email)
+                
+                if not verification_success:
+                    print("❌ Gmail token verification failed after all attempts")
+                    # Log the current database state for debugging
+                    user_model.check_database_state(user_id)
+                    flash('Gmail connection may be unstable. Please try reconnecting if you experience issues.', 'warning')
+                else:
+                    flash('Gmail connected successfully!', 'success')
             else:
-                print("❌ Failed to save Gmail token")
+                print("❌ Failed to save Gmail token after all recovery attempts")
+                flash('Failed to save Gmail connection. Please try again.', 'error')
+                return redirect(url_for('connect_gmail'))
         else:
             print("❌ Failed to save token - user_model or token_data is None")
+            flash('Authentication failed. Please try again.', 'error')
+            return redirect(url_for('connect_gmail'))
         
         # Set session variable to indicate Gmail is authenticated
         session['gmail_authenticated'] = True
         print("✅ Session updated with Gmail authentication")
-        flash('Gmail connected successfully!', 'success')
         return redirect(url_for('dashboard'))
+        
     except Exception as e:
         print(f"❌ Error in OAuth callback: {str(e)}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         flash(f'Error during authentication: {str(e)}', 'error')
         return redirect(url_for('connect_gmail'))
 
@@ -1980,6 +2050,75 @@ def test_session():
 def features():
     """Features page showing all app features organized by plan"""
     return render_template('features.html')
+
+# Debug and diagnostic endpoints
+@app.route('/debug/token-status')
+@login_required
+def debug_token_status():
+    """Debug endpoint to check token status and integrity"""
+    user_id = session.get('user_id')
+    
+    if not user_model:
+        return jsonify({'error': 'User model not available'}), 500
+    
+    try:
+        # Force database sync first
+        user_model.force_database_sync()
+        
+        # Get comprehensive user state
+        user_data = user_model.get_user_by_id(user_id)
+        token_data = user_model.get_gmail_token(user_id)
+        
+        # Check database connectivity
+        connectivity = user_model.check_database_connectivity()
+        
+        # Get raw database state
+        user_model.check_database_state(user_id)
+        
+        status = {
+            'user_id': user_id,
+            'user_found': user_data is not None,
+            'token_found': token_data is not None,
+            'token_length': len(str(token_data)) if token_data else 0,
+            'database_connectivity': connectivity,
+            'user_email': user_data.get('email') if user_data else None,
+            'gmail_email': user_data.get('gmail_email') if user_data else None,
+            'session_authenticated': session.get('gmail_authenticated', False),
+            'subscription_plan': user_data.get('subscription_plan') if user_data else None,
+            'last_login': user_data.get('last_login') if user_data else None
+        }
+        
+        return jsonify(status)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/debug/repair-token', methods=['POST'])
+@login_required 
+def debug_repair_token():
+    """Debug endpoint to manually repair token integrity"""
+    user_id = session.get('user_id')
+    
+    if not user_model:
+        return jsonify({'error': 'User model not available'}), 500
+    
+    try:
+        # Attempt to repair token integrity
+        repair_success = user_model.repair_user_token_integrity(user_id)
+        
+        if repair_success:
+            return jsonify({
+                'success': True,
+                'message': 'Token integrity repair completed'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Token integrity repair failed - no token available to restore'
+            })
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

@@ -280,12 +280,12 @@ class User:
         return None
     
     def update_gmail_token(self, user_id, token_data, gmail_email=None):
-        """Update user's Gmail token and optionally Gmail email address"""
+        """Update user's Gmail token and optionally Gmail email address with robust persistence"""
         print(f"🔍 [DEBUG] update_gmail_token called for user_id: {user_id}")
         print(f"🔍 [DEBUG] token_data length: {len(str(token_data)) if token_data else 0}")
         print(f"🔍 [DEBUG] gmail_email: {gmail_email}")
         
-        max_retries = 3
+        max_retries = 5  # Increased retries
         retry_delay = 0.1
         
         for attempt in range(max_retries):
@@ -293,71 +293,170 @@ class User:
                 conn = self.db_manager.get_connection()
                 cursor = conn.cursor()
                 
-                # Always update both fields - if gmail_email is None, it will clear the field
-                cursor.execute('UPDATE users SET gmail_token = ?, gmail_email = ? WHERE id = ?', (token_data, gmail_email, user_id))
+                # First, verify the user exists
+                cursor.execute('SELECT id, email FROM users WHERE id = ?', (user_id,))
+                user_check = cursor.fetchone()
+                
+                if not user_check:
+                    print(f"❌ [DEBUG] User {user_id} not found in database during token update (attempt {attempt + 1})")
+                    conn.close()
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        return False
+                
+                print(f"✅ [DEBUG] User {user_id} found: {user_check[1]} (attempt {attempt + 1})")
+                
+                # Use explicit transaction to ensure atomicity
+                cursor.execute('BEGIN IMMEDIATE')
+                
+                # Update with explicit transaction control
+                cursor.execute('''
+                    UPDATE users 
+                    SET gmail_token = ?, gmail_email = ?, last_login = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                ''', (token_data, gmail_email, user_id))
                 
                 rows_affected = cursor.rowcount
                 print(f"🔍 [DEBUG] Rows affected by update: {rows_affected}")
                 
-                conn.commit()
-                conn.close()
+                if rows_affected == 0:
+                    print(f"⚠️ [DEBUG] No rows affected - user may have been deleted (attempt {attempt + 1})")
+                    cursor.execute('ROLLBACK')
+                    conn.close()
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        return False
                 
-                print(f"✅ [DEBUG] Gmail token update completed for user_id: {user_id}")
-                return True
+                # Commit the transaction
+                cursor.execute('COMMIT')
+                
+                # Immediately verify the update worked
+                cursor.execute('SELECT gmail_token, gmail_email FROM users WHERE id = ?', (user_id,))
+                verification = cursor.fetchone()
+                
+                if verification and verification[0] == token_data:
+                    print(f"✅ [DEBUG] Token update verified successfully (attempt {attempt + 1})")
+                    conn.close()
+                    return True
+                else:
+                    print(f"❌ [DEBUG] Token verification failed after update (attempt {attempt + 1})")
+                    conn.close()
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        return False
                 
             except sqlite3.OperationalError as e:
-                conn.close() if 'conn' in locals() else None
+                if 'conn' in locals():
+                    try:
+                        cursor.execute('ROLLBACK')
+                    except:
+                        pass
+                    conn.close()
+                
                 if "database is locked" in str(e).lower() and attempt < max_retries - 1:
                     print(f"⚠️ Database locked during update, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
-                    print(f"❌ [DEBUG] Database error in update_gmail_token: {e}")
-                    raise
+                    print(f"❌ [DEBUG] Database operational error in update_gmail_token: {e}")
+                    if attempt == max_retries - 1:
+                        raise
             except Exception as e:
-                conn.close() if 'conn' in locals() else None
-                print(f"❌ [DEBUG] Error in update_gmail_token: {e}")
-                raise
+                if 'conn' in locals():
+                    try:
+                        cursor.execute('ROLLBACK')
+                    except:
+                        pass
+                    conn.close()
+                
+                print(f"❌ [DEBUG] Error in update_gmail_token (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(retry_delay)
+                retry_delay *= 2
         
         print(f"❌ [DEBUG] Failed to update Gmail token after {max_retries} attempts")
         return False
     
     def get_gmail_token(self, user_id):
-        """Get user's Gmail token with retry logic"""
+        """Get user's Gmail token with enhanced retry logic and debugging"""
         print(f"🔍 [DEBUG] get_gmail_token called for user_id: {user_id}")
         
-        max_retries = 3
+        max_retries = 5  # Increased retries to match update_gmail_token
         retry_delay = 0.1
         
         for attempt in range(max_retries):
             try:
+                # Force a fresh connection each time to avoid caching issues
                 conn = self.db_manager.get_connection()
                 cursor = conn.cursor()
                 
+                # First check if user exists at all
+                cursor.execute('SELECT id, email FROM users WHERE id = ?', (user_id,))
+                user_check = cursor.fetchone()
+                
+                if not user_check:
+                    print(f"❌ [DEBUG] User {user_id} not found in database during token retrieval (attempt {attempt + 1})")
+                    conn.close()
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        return None
+                
+                print(f"✅ [DEBUG] User {user_id} found: {user_check[1]} (attempt {attempt + 1})")
+                
+                # Now get the token
                 cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
                 result = cursor.fetchone()
                 conn.close()
                 
                 token_found = result[0] if result else None
-                print(f"🔍 [DEBUG] Token found: {'Yes' if token_found else 'No'}")
+                print(f"🔍 [DEBUG] Token found: {'Yes' if token_found else 'No'} (attempt {attempt + 1})")
                 if token_found:
                     print(f"🔍 [DEBUG] Token length: {len(str(token_found))}")
-                
-                return token_found
+                    return token_found
+                elif attempt == max_retries - 1:
+                    # On final attempt, log the complete database state
+                    self.check_database_state(user_id)
+                    return None
+                else:
+                    # Retry with delay
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
                 
             except sqlite3.OperationalError as e:
-                conn.close() if 'conn' in locals() else None
+                if 'conn' in locals():
+                    conn.close()
+                
                 if "database is locked" in str(e).lower() and attempt < max_retries - 1:
                     print(f"⚠️ Database locked during retrieval, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
-                    print(f"❌ [DEBUG] Database error in get_gmail_token: {e}")
-                    raise
+                    print(f"❌ [DEBUG] Database operational error in get_gmail_token: {e}")
+                    if attempt == max_retries - 1:
+                        raise
             except Exception as e:
-                conn.close() if 'conn' in locals() else None
-                print(f"❌ [DEBUG] Error in get_gmail_token: {e}")
-                raise
+                if 'conn' in locals():
+                    conn.close()
+                
+                print(f"❌ [DEBUG] Error in get_gmail_token (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(retry_delay)
+                retry_delay *= 2
         
         print(f"❌ [DEBUG] Failed to get Gmail token after {max_retries} attempts")
         return None
@@ -613,6 +712,163 @@ class User:
             
         except Exception as e:
             print(f"❌ [DEBUG] Database connectivity error: {e}")
+            return False
+
+    def force_database_sync(self):
+        """Force database synchronization to ensure all pending writes are committed"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Force checkpoint to ensure WAL is synced
+            cursor.execute('PRAGMA wal_checkpoint(FULL)')
+            
+            # Force synchronous mode temporarily
+            cursor.execute('PRAGMA synchronous=FULL')
+            cursor.execute('PRAGMA synchronous=NORMAL')  # Reset to normal
+            
+            conn.close()
+            print("✅ [DEBUG] Database sync forced successfully")
+            return True
+        except Exception as e:
+            print(f"❌ [DEBUG] Error forcing database sync: {e}")
+            return False
+    
+    def ensure_user_integrity(self, user_id):
+        """Ensure user record integrity and fix any corruption issues"""
+        print(f"🔧 [DEBUG] Ensuring user integrity for user_id: {user_id}")
+        
+        max_retries = 3
+        retry_delay = 0.2
+        
+        for attempt in range(max_retries):
+            try:
+                conn = self.db_manager.get_connection()
+                cursor = conn.cursor()
+                
+                # Check if user exists with a comprehensive query
+                cursor.execute('''
+                    SELECT id, email, password_hash, first_name, last_name, 
+                           subscription_plan, subscription_status, subscription_expires,
+                           gmail_token, gmail_email, api_usage_count, monthly_usage_limit,
+                           created_at, last_login, is_active
+                    FROM users WHERE id = ?
+                ''', (user_id,))
+                
+                user_data = cursor.fetchone()
+                
+                if user_data:
+                    print(f"✅ [DEBUG] User {user_id} integrity check passed (attempt {attempt + 1})")
+                    print(f"   - Email: {user_data[1]}")
+                    print(f"   - Active: {user_data[14]}")
+                    print(f"   - Has Token: {'Yes' if user_data[8] else 'No'}")
+                    conn.close()
+                    return True
+                else:
+                    print(f"❌ [DEBUG] User {user_id} not found during integrity check (attempt {attempt + 1})")
+                    
+                    # Try to find the user with a different approach
+                    cursor.execute('SELECT COUNT(*) FROM users WHERE id = ?', (user_id,))
+                    count = cursor.fetchone()[0]
+                    print(f"   - User count for ID {user_id}: {count}")
+                    
+                    if count == 0:
+                        # User truly doesn't exist
+                        print(f"❌ [DEBUG] User {user_id} confirmed missing from database")
+                        conn.close()
+                        return False
+                    else:
+                        # User exists but query failed - database corruption?
+                        print(f"⚠️ [DEBUG] User {user_id} exists but query failed - potential corruption")
+                        if attempt < max_retries - 1:
+                            conn.close()
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            conn.close()
+                            return False
+                
+            except Exception as e:
+                if 'conn' in locals():
+                    conn.close()
+                print(f"❌ [DEBUG] Error during user integrity check (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    raise
+        
+        return False
+    
+    def repair_user_token_integrity(self, user_id, token_data=None, gmail_email=None):
+        """Repair user token integrity issues by ensuring proper database state"""
+        print(f"🔧 [DEBUG] Repairing token integrity for user_id: {user_id}")
+        
+        try:
+            # First ensure user integrity
+            if not self.ensure_user_integrity(user_id):
+                print(f"❌ [DEBUG] Cannot repair token - user {user_id} integrity check failed")
+                return False
+            
+            # Force database sync first
+            self.force_database_sync()
+            
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Check current user state
+            cursor.execute('''
+                SELECT id, email, gmail_token, gmail_email, subscription_plan, subscription_status 
+                FROM users WHERE id = ?
+            ''', (user_id,))
+            
+            user_data = cursor.fetchone()
+            
+            if not user_data:
+                print(f"❌ [DEBUG] User {user_id} not found - cannot repair")
+                conn.close()
+                return False
+            
+            print(f"🔍 [DEBUG] Current user state: ID={user_data[0]}, Email={user_data[1]}")
+            print(f"🔍 [DEBUG] Current token: {'Present' if user_data[2] else 'Missing'}")
+            print(f"🔍 [DEBUG] Current gmail_email: {user_data[3]}")
+            
+            if token_data and not user_data[2]:
+                # Token is missing but we have it - restore it
+                print("🔧 [DEBUG] Restoring missing token...")
+                cursor.execute('BEGIN IMMEDIATE')
+                
+                cursor.execute('''
+                    UPDATE users 
+                    SET gmail_token = ?, gmail_email = ?, last_login = CURRENT_TIMESTAMP 
+                    WHERE id = ?
+                ''', (token_data, gmail_email, user_id))
+                
+                if cursor.rowcount > 0:
+                    cursor.execute('COMMIT')
+                    print("✅ [DEBUG] Token restoration successful")
+                else:
+                    cursor.execute('ROLLBACK')
+                    print("❌ [DEBUG] Token restoration failed")
+                    conn.close()
+                    return False
+            
+            # Verify final state
+            cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
+            final_check = cursor.fetchone()
+            
+            if final_check and final_check[0]:
+                print("✅ [DEBUG] Token integrity repair completed successfully")
+                conn.close()
+                return True
+            else:
+                print("❌ [DEBUG] Token integrity repair failed")
+                conn.close()
+                return False
+                
+        except Exception as e:
+            print(f"❌ [DEBUG] Error during token integrity repair: {e}")
             return False
 
 class SubscriptionPlan:
