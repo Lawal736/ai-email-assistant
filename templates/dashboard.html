@@ -769,7 +769,8 @@ function loadAIAnalysis() {
         fetch('/api/analyze-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email_id: emailId })
+            body: JSON.stringify({ email_id: emailId }),
+            credentials: 'include'
         })
         .then(response => {
             if (response.status === 403) {
@@ -1113,7 +1114,8 @@ function analyzeThread(threadKey) {
         body: JSON.stringify({
             email_id: firstEmail.id,
             type: 'thread_analysis'
-        })
+        }),
+        credentials: 'include'
     })
     .then(response => response.json())
     .then(data => {
@@ -1292,7 +1294,8 @@ function generateCustomInsights() {
             criteria: criteria,
             email_count: parseInt(emailCount),
             type: 'general'
-        })
+        }),
+        credentials: 'include'
     })
     .then(response => response.json())
     .then(data => {
@@ -1392,13 +1395,15 @@ setInterval(() => {
     // Check if user is active
     if (!document.hidden) {
         // Refresh data silently
-        fetch('/api/summary')
-            .then(response => response.json())
-            .then(data => {
-                // Update summary if needed
-                console.log('Data refreshed');
-            })
-            .catch(error => console.log('Refresh failed:', error));
+        fetch('/api/summary', {
+            credentials: 'include'
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Update summary if needed
+            console.log('Data refreshed');
+        })
+        .catch(error => console.log('Refresh failed:', error));
     }
 }, 300000); // 5 minutes
 </script>
