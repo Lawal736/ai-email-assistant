@@ -30,16 +30,22 @@ if (
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
-        PERMANENT_SESSION_LIFETIME=timedelta(days=30)
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        SESSION_COOKIE_DOMAIN=None,  # Let Flask determine the domain
+        SESSION_COOKIE_PATH='/'
     )
     print("🔧 Production session configuration applied")
+    print(f"🔧 SECRET_KEY set: {'Yes' if app.secret_key and app.secret_key != 'your-secret-key-here-change-this-in-production' else 'No'}")
+    print(f"🔧 DIGITALOCEAN_APP_PLATFORM: {os.environ.get('DIGITALOCEAN_APP_PLATFORM')}")
 else:
     # Development environment
     app.config.update(
         SESSION_COOKIE_SECURE=False,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
-        PERMANENT_SESSION_LIFETIME=timedelta(days=30)
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        SESSION_COOKIE_DOMAIN=None,
+        SESSION_COOKIE_PATH='/'
     )
     print("🔧 Development session configuration applied")
 
@@ -1881,13 +1887,32 @@ def privacy():
 
 @app.route('/test-session')
 def test_session():
-    """Test session persistence"""
-    if 'test_key' not in session:
-        session['test_key'] = 'Session is working!'
-        msg = 'Session variable set. Reload to check persistence.'
-    else:
-        msg = f"Session variable value: {session['test_key']}"
-    return f'<h2>{msg}</h2>'
+    """Test session functionality"""
+    session['test_variable'] = 'Session is working!'
+    return f"""
+    <h2>Session Test</h2>
+    <p><strong>Session variable value:</strong> {session.get('test_variable', 'Not set')}</p>
+    <p><strong>User ID in session:</strong> {session.get('user_id', 'Not logged in')}</p>
+    <p><strong>Session ID:</strong> {session.get('_id', 'No session ID')}</p>
+    <p><strong>Session permanent:</strong> {session.get('_permanent', False)}</p>
+    <p><strong>All session data:</strong> {dict(session)}</p>
+    <p><strong>App config:</strong></p>
+    <ul>
+        <li>SECRET_KEY set: {'Yes' if app.secret_key and app.secret_key != 'your-secret-key-here-change-this-in-production' else 'No'}</li>
+        <li>SESSION_COOKIE_SECURE: {app.config.get('SESSION_COOKIE_SECURE')}</li>
+        <li>SESSION_COOKIE_HTTPONLY: {app.config.get('SESSION_COOKIE_HTTPONLY')}</li>
+        <li>SESSION_COOKIE_SAMESITE: {app.config.get('SESSION_COOKIE_SAMESITE')}</li>
+        <li>SESSION_COOKIE_DOMAIN: {app.config.get('SESSION_COOKIE_DOMAIN')}</li>
+        <li>SESSION_COOKIE_PATH: {app.config.get('SESSION_COOKIE_PATH')}</li>
+    </ul>
+    <p><strong>Environment:</strong></p>
+    <ul>
+        <li>DIGITALOCEAN_APP_PLATFORM: {os.environ.get('DIGITALOCEAN_APP_PLATFORM')}</li>
+        <li>PORT: {os.environ.get('PORT')}</li>
+        <li>FLASK_ENV: {os.environ.get('FLASK_ENV')}</li>
+    </ul>
+    <p><a href="/dashboard">Go to Dashboard</a></p>
+    """
 
 @app.route('/features')
 def features():
