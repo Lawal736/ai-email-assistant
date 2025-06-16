@@ -1090,18 +1090,29 @@ function viewThread(threadKey) {
 function formatEmailContent(content) {
     if (!content) return '';
     
-    // Remove HTML tags and CSS styles
+    console.log("🔍 Original content:", content.substring(0, 200) + "...");
+    
+    // Remove HTML tags and CSS styles more aggressively
     let cleaned = content
-        // Remove CSS styles
+        // Remove CSS styles completely
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        // Remove script tags
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        // Remove CSS in style attributes
+        .replace(/style\s*=\s*["'][^"']*["']/gi, '')
         // Remove HTML tags but keep line breaks
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/p>/gi, '\n')
         .replace(/<p[^>]*>/gi, '')
         .replace(/<div[^>]*>/gi, '')
         .replace(/<\/div>/gi, '\n')
+        .replace(/<span[^>]*>/gi, '')
+        .replace(/<\/span>/gi, '')
+        .replace(/<td[^>]*>/gi, '')
+        .replace(/<\/td>/gi, ' ')
+        .replace(/<tr[^>]*>/gi, '')
+        .replace(/<\/tr>/gi, '\n')
+        .replace(/<table[^>]*>/gi, '')
+        .replace(/<\/table>/gi, '\n')
         // Remove other common HTML tags
         .replace(/<[^>]+>/g, '')
         // Decode HTML entities
@@ -1115,6 +1126,8 @@ function formatEmailContent(content) {
         .replace(/\s+/g, ' ')
         .replace(/\n\s*\n/g, '\n\n')
         .trim();
+    
+    console.log("🔍 Cleaned content:", cleaned.substring(0, 200) + "...");
     
     // Format the content with proper line breaks
     const lines = cleaned.split('\n');
@@ -1134,7 +1147,10 @@ function formatEmailContent(content) {
         return line;
     }).filter(line => line.length > 0);
     
-    return formattedLines.join('<br>');
+    const result = formattedLines.join('<br>');
+    console.log("🔍 Final formatted content:", result.substring(0, 200) + "...");
+    
+    return result;
 }
 
 function analyzeThread(threadKey) {
