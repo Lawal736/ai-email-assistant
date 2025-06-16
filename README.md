@@ -311,4 +311,35 @@ For support and questions:
 
 **Built with ❤️ using Flask, Gmail API, and AI services**
 
-*Last updated: June 2025* 
+*Last updated: June 2025*
+
+## Deployment (Digital Ocean)
+
+This project is now deployed and maintained on Digital Ocean App Platform.
+
+### Quick Start for Digital Ocean
+
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/Lawal736/ai-email-assistant.git
+   cd ai-email-assistant
+   ```
+2. **Set up your `.env` file:**
+   - Copy `env_example.txt` to `.env` and fill in your secrets and API keys.
+3. **Build and run locally (optional):**
+   ```sh
+   docker-compose up --build
+   ```
+4. **Deploy to Digital Ocean:**
+   - Push your changes to GitHub.
+   - Connect your repo to Digital Ocean App Platform.
+   - Set environment variables in the Digital Ocean dashboard.
+   - The platform will build and deploy automatically using the `Dockerfile`.
+
+### Environment Variables
+See `env_example.txt` for all required variables.
+
+### Notes
+- All GCP-specific scripts and configs have been removed.
+- For local development, you can use Docker Compose or run with Python directly.
+- For production, use Digital Ocean App Platform with the provided Dockerfile. 

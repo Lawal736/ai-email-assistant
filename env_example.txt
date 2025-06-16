@@ -9,17 +9,31 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # Flask Configuration
 FLASK_SECRET_KEY=your_secret_key_here
-FLASK_ENV=development
-FLASK_DEBUG=1
+FLASK_ENV=production
+FLASK_DEBUG=0
 
 # Gmail API Configuration
 # Note: credentials.json should be placed in project root directory
 # You can also set GOOGLE_CREDENTIALS as an environment variable for deployment
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 
-# Optional: Custom port (default is 5001)
-PORT=5001
+# Paystack Configuration
+PAYSTACK_PUBLIC_KEY=your-paystack-public-key
+PAYSTACK_SECRET_KEY=your-paystack-secret-key
 
-# Optional: Custom host (default is 0.0.0.0)
+# Stripe Configuration
+STRIPE_PUBLIC_KEY=your-stripe-public-key
+STRIPE_SECRET_KEY=your-stripe-secret-key
+
+# Email/SMTP Configuration
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+
+# App Platform (Digital Ocean) Port
+PORT=8080
 HOST=0.0.0.0
 
 # AI Model Configuration (Optional)

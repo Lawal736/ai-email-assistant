@@ -96,12 +96,34 @@ git push heroku main
 
 ## Step 5: Deploy to DigitalOcean
 
-1. **Sign up** at [digitalocean.com](https://digitalocean.com/)
-2. **Create App Platform** app
-3. **Connect your GitHub repository**
-4. **Configure environment variables**:
-   - Add all variables from your `.env` file
-5. **Deploy** - DigitalOcean auto-detects Flask app
+This project is now deployed and maintained on Digital Ocean App Platform.
+
+## Steps to Deploy on Digital Ocean
+
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/Lawal736/ai-email-assistant.git
+   cd ai-email-assistant
+   ```
+2. **Set up your `.env` file:**
+   - Copy `env_example.txt` to `.env` and fill in your secrets and API keys.
+3. **Build and run locally (optional):**
+   ```sh
+   docker-compose up --build
+   ```
+4. **Deploy to Digital Ocean:**
+   - Push your changes to GitHub.
+   - Connect your repo to Digital Ocean App Platform.
+   - Set environment variables in the Digital Ocean dashboard.
+   - The platform will build and deploy automatically using the `Dockerfile`.
+
+## Environment Variables
+See `env_example.txt` for all required variables.
+
+## Notes
+- All GCP-specific scripts and configs have been removed.
+- For local development, you can use Docker Compose or run with Python directly.
+- For production, use Digital Ocean App Platform with the provided Dockerfile.
 
 ## Step 6: Post-Deployment Setup
 

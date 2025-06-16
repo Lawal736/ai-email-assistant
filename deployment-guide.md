@@ -180,4 +180,35 @@ If you encounter issues:
 1. Check the logs in your deployment platform
 2. Verify all environment variables are set
 3. Test locally with production settings
-4. Check platform-specific documentation 
+4. Check platform-specific documentation
+
+# Deployment Guide (Digital Ocean)
+
+This project is now deployed and maintained on Digital Ocean App Platform.
+
+## Steps to Deploy on Digital Ocean
+
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/Lawal736/ai-email-assistant.git
+   cd ai-email-assistant
+   ```
+2. **Set up your `.env` file:**
+   - Copy `env_example.txt` to `.env` and fill in your secrets and API keys.
+3. **Build and run locally (optional):**
+   ```sh
+   docker-compose up --build
+   ```
+4. **Deploy to Digital Ocean:**
+   - Push your changes to GitHub.
+   - Connect your repo to Digital Ocean App Platform.
+   - Set environment variables in the Digital Ocean dashboard.
+   - The platform will build and deploy automatically using the `Dockerfile`.
+
+## Environment Variables
+See `env_example.txt` for all required variables.
+
+## Notes
+- All GCP-specific scripts and configs have been removed.
+- For local development, you can use Docker Compose or run with Python directly.
+- For production, use Digital Ocean App Platform with the provided Dockerfile. 
