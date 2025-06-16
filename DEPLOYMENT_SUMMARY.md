@@ -49,7 +49,7 @@ git push -u origin main
 
 | Platform | Difficulty | Cost | Best For |
 |----------|------------|------|----------|
-| **Heroku** | Easy | Free tier available | Quick deployment |
+| **Digital Ocean** | Easy | Free tier available | Quick deployment |
 | **Railway** | Easy | Free tier available | Modern alternative |
 | **Docker** | Medium | Free | Full control |
 | **VPS** | Hard | $5-20/month | Complete control |
@@ -83,14 +83,11 @@ cp env_example.txt .env
 
 ## 🚀 **Quick Deployment Commands**
 
-### Heroku
+### Digital Ocean
 ```bash
-# Install Heroku CLI first
-heroku create your-app-name
-heroku config:set OPENAI_API_KEY=your_key
-heroku config:set FLASK_SECRET_KEY=your_secret
-heroku config:set GOOGLE_CREDENTIALS="$(cat credentials.json)"
-git push heroku main
+# Install Digital Ocean CLI first
+doctl compute droplet create --image ubuntu-22-04-x64 --size s-1vcpu-1gb --region sfo3 --ssh-keys YOUR_SSH_KEY_ID
+# Follow the prompts to set up the droplet
 ```
 
 ### Docker
