@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Cancelled - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg">
+                <div class="card-header bg-warning text-dark">
+                    <h3 class="mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        Payment Cancelled
+                    </h3>
+                </div>
+                
+                <div class="card-body p-4 text-center">
+                    <div class="mb-4">
+                        <i class="fas fa-times-circle text-warning" style="font-size: 4rem;"></i>
+                    </div>
+                    
+                    <h4 class="text-warning mb-3">Payment was cancelled</h4>
+                    
+                    <p class="lead mb-4">
+                        Your payment was cancelled. No charges have been made to your account. You can try again anytime.
+                    </p>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-lg me-md-2">
+                            <i class="fas fa-credit-card me-2"></i>
+                            Try Again
+                        </a>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-lg">
+                            <i class="fas fa-tachometer-alt me-2"></i>
+                            Back to Dashboard
+                        </a>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            If you're experiencing issues, please contact our support team.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

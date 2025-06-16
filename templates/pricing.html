@@ -25,6 +25,27 @@
                 <span class="badge bg-success">Save 17%</span>
             </span>
         </div>
+        
+        <!-- Currency Selector -->
+        <div class="d-flex justify-content-center align-items-center mb-4">
+            <span class="me-3">Currency:</span>
+            <select class="form-select" id="currencySelector" style="width: auto;">
+                <option value="USD" {% if user_currency == 'USD' %}selected{% endif %}>🇺🇸 USD - US Dollar</option>
+                <option value="NGN" {% if user_currency == 'NGN' %}selected{% endif %}>🇳🇬 NGN - Nigerian Naira</option>
+                <option value="GHS" {% if user_currency == 'GHS' %}selected{% endif %}>🇬🇭 GHS - Ghanaian Cedi</option>
+                <option value="KES" {% if user_currency == 'KES' %}selected{% endif %}>🇰🇪 KES - Kenyan Shilling</option>
+                <option value="ZAR" {% if user_currency == 'ZAR' %}selected{% endif %}>🇿🇦 ZAR - South African Rand</option>
+                <option value="UGX" {% if user_currency == 'UGX' %}selected{% endif %}>🇺🇬 UGX - Ugandan Shilling</option>
+                <option value="TZS" {% if user_currency == 'TZS' %}selected{% endif %}>🇹🇿 TZS - Tanzanian Shilling</option>
+                <option value="ZMW" {% if user_currency == 'ZMW' %}selected{% endif %}>🇿🇲 ZMW - Zambian Kwacha</option>
+                <option value="XOF" {% if user_currency == 'XOF' %}selected{% endif %}>🇧🇯 XOF - West African CFA Franc</option>
+                <option value="XAF" {% if user_currency == 'XAF' %}selected{% endif %}>🇨🇲 XAF - Central African CFA Franc</option>
+                <option value="EUR" {% if user_currency == 'EUR' %}selected{% endif %}>🇪🇺 EUR - Euro</option>
+                <option value="GBP" {% if user_currency == 'GBP' %}selected{% endif %}>🇬🇧 GBP - British Pound</option>
+                <option value="CAD" {% if user_currency == 'CAD' %}selected{% endif %}>🇨🇦 CAD - Canadian Dollar</option>
+                <option value="AUD" {% if user_currency == 'AUD' %}selected{% endif %}>🇦🇺 AUD - Australian Dollar</option>
+            </select>
+        </div>
     </div>
 
     <!-- Pricing Cards -->
@@ -40,11 +61,17 @@
                 
                 <div class="card-body p-4">
                     <div class="text-center mb-4">
-                        <h3 class="fw-bold">{{ plan.name|title }}</h3>
+                        <div class="d-flex align-items-center justify-content-center mb-2">
+                            <h3 class="fw-bold mb-0">{{ plan.name|title }}</h3>
+                            <i class="fas fa-info-circle tooltip-icon ms-2" 
+                               data-plan="{{ plan.name }}" 
+                               title="Click for detailed plan information"
+                               style="cursor: pointer; color: #6c757d; font-size: 16px;"></i>
+                        </div>
                         <div class="pricing-amount">
                             <span class="display-6 fw-bold text-primary">
-                                $<span class="monthly-price">{{ "%.2f"|format(plan.price_monthly) }}</span>
-                                <span class="yearly-price d-none">{{ "%.2f"|format(plan.price_yearly) }}</span>
+                                <span class="currency-symbol">{{ plan.currency_symbol }}</span><span class="monthly-price">{{ plan.price_monthly|thousands }}</span>
+                                <span class="yearly-price d-none">{{ plan.price_yearly|thousands }}</span>
                             </span>
                             <span class="text-muted">
                                 /<span class="monthly-period">month</span><span class="yearly-period d-none">year</span>
@@ -53,6 +80,12 @@
                         <p class="text-muted mb-0">
                             Up to {{ plan.email_limit }} emails per month
                         </p>
+                        {% if plan.currency != 'USD' %}
+                        <small class="text-info">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Prices shown in {{ plan.currency_name }} ({{ plan.currency }})
+                        </small>
+                        {% endif %}
                     </div>
 
                     <ul class="list-unstyled mb-4">
@@ -89,6 +122,9 @@
         </div>
         {% endfor %}
     </div>
+
+    <!-- Tooltip Container -->
+    <div id="tooltip-container" class="custom-tooltip" style="display: none; position: absolute; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-width: 350px; font-size: 14px; line-height: 1.6;"></div>
 
     <!-- FAQ Section -->
     <div class="row justify-content-center mt-5">
@@ -178,189 +214,225 @@
     </div>
 </div>
 
-<!-- Plan Selection Modal -->
-<div class="modal fade" id="planModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-credit-card me-2"></i>
-                    Choose Payment Method
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-3">Select your preferred payment method for the <strong id="selectedPlanName"></strong> plan:</p>
-                
-                <!-- Payment Methods -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <div class="card border-primary payment-method-card" data-method="stripe">
-                            <div class="card-body text-center">
-                                <div class="mb-3">
-                                    <i class="fas fa-credit-card fa-3x text-primary"></i>
-                                </div>
-                                <h6 class="card-title">Credit Card</h6>
-                                <p class="card-text text-muted">Pay with Visa, Mastercard, or other cards</p>
-                                <div class="payment-logos">
-                                    <i class="fab fa-cc-visa me-2"></i>
-                                    <i class="fab fa-cc-mastercard me-2"></i>
-                                    <i class="fab fa-cc-amex"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <div class="card payment-method-card" data-method="crypto">
-                            <div class="card-body text-center">
-                                <div class="mb-3">
-                                    <i class="fas fa-coins fa-3x text-warning"></i>
-                                </div>
-                                <h6 class="card-title">USDT (ERC20)</h6>
-                                <p class="card-text text-muted">Pay with USDT on Ethereum network</p>
-                                <div class="crypto-info">
-                                    <small class="text-muted">
-                                        <i class="fab fa-ethereum me-1"></i>
-                                        Ethereum Mainnet
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Billing Period Selection -->
-                <div class="billing-selection d-none">
-                    <h6 class="mb-3">Select Billing Period:</h6>
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <div class="card border-primary" id="monthlyCard">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Monthly</h6>
-                                    <p class="card-text text-muted">Billed monthly</p>
-                                    <button class="btn btn-primary btn-sm" onclick="proceedToPayment('monthly')">
-                                        Select Monthly
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="card" id="yearlyCard">
-                                <div class="card-body text-center">
-                                    <h6 class="card-title">Yearly</h6>
-                                    <p class="card-text text-muted">Billed annually</p>
-                                    <span class="badge bg-success mb-2">Save 17%</span>
-                                    <button class="btn btn-outline-primary btn-sm" onclick="proceedToPayment('yearly')">
-                                        Select Yearly
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<style>
+.tooltip-icon:hover {
+    color: #007bff !important;
+    transform: scale(1.1);
+    transition: all 0.2s ease;
+}
+
+.custom-tooltip {
+    border-left: 4px solid #007bff !important;
+}
+
+.tooltip-header {
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 12px;
+    font-size: 18px;
+    border-bottom: 2px solid #f8f9fa;
+    padding-bottom: 8px;
+}
+
+.tooltip-description {
+    color: #666;
+    margin-bottom: 15px;
+    font-style: italic;
+}
+
+.tooltip-features {
+    margin: 15px 0;
+}
+
+.tooltip-features li {
+    margin: 8px 0;
+    padding-left: 20px;
+    position: relative;
+    color: #555;
+}
+
+.tooltip-features li:before {
+    content: "✓";
+    color: #28a745;
+    position: absolute;
+    left: 0;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.tooltip-best-for {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 15px;
+    border-left: 3px solid #28a745;
+}
+
+.tooltip-best-for strong {
+    color: #333;
+}
+
+.tooltip-best-for span {
+    color: #666;
+    font-style: italic;
+}
+</style>
 
 <script>
-let selectedPlan = '';
-let selectedPaymentMethod = '';
+// Tooltip data with detailed plan information
+const tooltipData = {
+    free: {
+        title: "Free Plan",
+        description: "Perfect for individuals or light users who want to experience AI-powered email productivity at no cost.",
+        features: [
+            "Basic email analysis (summarizes and highlights key points)",
+            "Daily AI-generated summaries of your inbox",
+            "Action items extraction from emails",
+            "Email filtering and organization",
+            "Up to 50 emails per month"
+        ],
+        bestFor: "Students, freelancers, or anyone wanting to try out AI email tools before upgrading."
+    },
+    pro: {
+        title: "Pro Plan",
+        description: "Ideal for professionals and small businesses who need advanced AI features and higher email volume.",
+        features: [
+            "Everything in Free, plus:",
+            "Advanced AI analysis (deeper insights, context understanding)",
+            "Document processing (analyze attachments and documents)",
+            "Priority support (faster response times)",
+            "Custom insights tailored to your workflow",
+            "Up to 500 emails per month"
+        ],
+        bestFor: "Busy professionals, consultants, and small teams who want to automate and optimize their email workflow."
+    },
+    enterprise: {
+        title: "Enterprise Plan",
+        description: "Designed for organizations and teams that require unlimited analysis, collaboration, and integration capabilities.",
+        features: [
+            "Everything in Pro, plus:",
+            "Unlimited AI-powered email analysis",
+            "Team collaboration tools (shared insights, team dashboards)",
+            "API access for custom integrations with your business tools",
+            "Custom integrations and onboarding support",
+            "Up to 2,000 emails per month"
+        ],
+        bestFor: "Large teams, enterprises, and organizations with high email volume and advanced automation needs."
+    }
+};
 
-// Billing toggle functionality
-document.getElementById('billingToggle').addEventListener('change', function() {
-    const monthlyPrices = document.querySelectorAll('.monthly-price');
-    const yearlyPrices = document.querySelectorAll('.yearly-price');
-    const monthlyPeriods = document.querySelectorAll('.monthly-period');
-    const yearlyPeriods = document.querySelectorAll('.yearly-period');
-    
-    if (this.checked) {
-        // Show yearly pricing
-        monthlyPrices.forEach(price => price.classList.add('d-none'));
-        yearlyPrices.forEach(price => price.classList.remove('d-none'));
-        monthlyPeriods.forEach(period => period.classList.add('d-none'));
-        yearlyPeriods.forEach(period => period.classList.remove('d-none'));
-    } else {
-        // Show monthly pricing
-        monthlyPrices.forEach(price => price.classList.remove('d-none'));
-        yearlyPrices.forEach(price => price.classList.add('d-none'));
-        monthlyPeriods.forEach(period => period.classList.remove('d-none'));
-        yearlyPeriods.forEach(period => period.classList.add('d-none'));
+// Tooltip functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const tooltipContainer = document.getElementById('tooltip-container');
+    const tooltipIcons = document.querySelectorAll('.tooltip-icon');
+
+    tooltipIcons.forEach(icon => {
+        icon.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const plan = this.getAttribute('data-plan');
+            const data = tooltipData[plan];
+            
+            if (data) {
+                showTooltip(data, this);
+            }
+        });
+    });
+
+    // Hide tooltip when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.tooltip-icon') && !e.target.closest('.custom-tooltip')) {
+            hideTooltip();
+        }
+    });
+
+    function showTooltip(data, element) {
+        const rect = element.getBoundingClientRect();
+        
+        tooltipContainer.innerHTML = `
+            <div class="tooltip-header">
+                <i class="fas fa-info-circle me-2 text-primary"></i>${data.title}
+            </div>
+            <div class="tooltip-description">${data.description}</div>
+            <div class="tooltip-features">
+                <ul style="list-style: none; padding-left: 0; margin: 0;">
+                    ${data.features.map(feature => `<li>${feature}</li>`).join('')}
+                </ul>
+            </div>
+            <div class="tooltip-best-for">
+                <strong>Best for:</strong> <span>${data.bestFor}</span>
+            </div>
+        `;
+
+        // Position tooltip
+        const tooltipWidth = 350;
+        const tooltipHeight = tooltipContainer.offsetHeight;
+        const windowWidth = window.innerWidth;
+        
+        let left = rect.right + 15;
+        let top = rect.top - 50;
+        
+        // Adjust if tooltip goes off screen
+        if (left + tooltipWidth > windowWidth) {
+            left = rect.left - tooltipWidth - 15;
+        }
+        
+        if (top < 0) {
+            top = 10;
+        }
+        
+        tooltipContainer.style.left = left + 'px';
+        tooltipContainer.style.top = top + 'px';
+        tooltipContainer.style.display = 'block';
+    }
+
+    function hideTooltip() {
+        tooltipContainer.style.display = 'none';
     }
 });
 
+// Existing pricing functionality
 function selectPlan(planName) {
-    selectedPlan = planName;
-    document.getElementById('selectedPlanName').textContent = planName.charAt(0).toUpperCase() + planName.slice(1);
+    if (planName === 'free') {
+        window.location.href = '/connect-gmail';
+    } else {
+        const billingPeriod = document.getElementById('billingToggle').checked ? 'yearly' : 'monthly';
+        window.location.href = `/payment/checkout?plan=${planName}&billing=${billingPeriod}`;
+    }
+}
+
+// Currency and billing toggle functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const currencySelector = document.getElementById('currencySelector');
+    const billingToggle = document.getElementById('billingToggle');
     
-    // Reset payment method cards
-    document.querySelectorAll('.payment-method-card').forEach(card => {
-        card.classList.remove('border-primary');
+    currencySelector.addEventListener('change', function() {
+        const currency = this.value;
+        window.location.href = `/pricing?currency=${currency}`;
     });
     
-    // Hide billing selection initially
-    document.querySelector('.billing-selection').classList.add('d-none');
+    billingToggle.addEventListener('change', function() {
+        updatePricingDisplay(this.checked);
+    });
     
-    // Show modal
-    new bootstrap.Modal(document.getElementById('planModal')).show();
-}
-
-// Payment method selection
-document.addEventListener('click', function(e) {
-    if (e.target.closest('.payment-method-card')) {
-        const card = e.target.closest('.payment-method-card');
-        const method = card.dataset.method;
+    function updatePricingDisplay(isYearly) {
+        const monthlyPrices = document.querySelectorAll('.monthly-price');
+        const yearlyPrices = document.querySelectorAll('.yearly-price');
+        const monthlyPeriods = document.querySelectorAll('.monthly-period');
+        const yearlyPeriods = document.querySelectorAll('.yearly-period');
         
-        // Reset all cards
-        document.querySelectorAll('.payment-method-card').forEach(c => {
-            c.classList.remove('border-primary');
-        });
-        
-        // Highlight selected card
-        card.classList.add('border-primary');
-        selectedPaymentMethod = method;
-        
-        // Show billing selection for Stripe payments
-        if (method === 'stripe') {
-            document.querySelector('.billing-selection').classList.remove('d-none');
+        if (isYearly) {
+            monthlyPrices.forEach(el => el.classList.add('d-none'));
+            yearlyPrices.forEach(el => el.classList.remove('d-none'));
+            monthlyPeriods.forEach(el => el.classList.add('d-none'));
+            yearlyPeriods.forEach(el => el.classList.remove('d-none'));
         } else {
-            // For crypto, proceed directly
-            proceedToPayment('monthly'); // Default to monthly for crypto
+            monthlyPrices.forEach(el => el.classList.remove('d-none'));
+            yearlyPrices.forEach(el => el.classList.add('d-none'));
+            monthlyPeriods.forEach(el => el.classList.remove('d-none'));
+            yearlyPeriods.forEach(el => el.classList.add('d-none'));
         }
     }
-});
-
-function proceedToPayment(billingPeriod) {
-    if (selectedPaymentMethod === 'crypto') {
-        // Redirect to crypto payment
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '{{ url_for("crypto_checkout") }}';
-        
-        const planInput = document.createElement('input');
-        planInput.type = 'hidden';
-        planInput.name = 'plan';
-        planInput.value = selectedPlan;
-        
-        form.appendChild(planInput);
-        document.body.appendChild(form);
-        form.submit();
-    } else {
-        // Redirect to Stripe payment
-        window.location.href = `/payment/checkout?plan=${selectedPlan}&billing=${billingPeriod}`;
-    }
-}
-
-// Highlight selected billing period
-document.getElementById('monthlyCard').addEventListener('click', function() {
-    this.className = 'card border-primary';
-    document.getElementById('yearlyCard').className = 'card';
-});
-
-document.getElementById('yearlyCard').addEventListener('click', function() {
-    this.className = 'card border-primary';
-    document.getElementById('monthlyCard').className = 'card';
 });
 </script>
 {% endblock %} 

@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Features - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <h1 class="mb-4 text-center">Features</h1>
+    <div class="row justify-content-center mb-5">
+        <div class="col-auto">
+            <a href="/pricing" class="btn btn-outline-primary me-2">Pricing</a>
+            <a href="/features" class="btn btn-primary">Features</a>
+        </div>
+    </div>
+    
+    <!-- Free Plan Features -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <h3 class="text-success mb-4">
+                <i class="fas fa-check-circle me-2"></i>Free Plan Features
+            </h3>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 border-success">
+                <div class="card-body text-center">
+                    <i class="fas fa-envelope fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">Basic Email Analysis</h5>
+                    <p class="card-text">Get basic insights from your emails with simple AI analysis.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 border-success">
+                <div class="card-body text-center">
+                    <i class="fas fa-calendar-day fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">Daily Summaries</h5>
+                    <p class="card-text">Receive daily summaries of your email activity and important messages.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 border-success">
+                <div class="card-body text-center">
+                    <i class="fas fa-filter fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">Email Filtering</h5>
+                    <p class="card-text">Automatically filter and organize your emails by importance and type.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 border-success">
+                <div class="card-body text-center">
+                    <i class="fas fa-robot fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">Basic AI Recommendations</h5>
+                    <p class="card-text">Get basic AI-powered recommendations for email responses.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 border-success">
+                <div class="card-body text-center">
+                    <i class="fas fa-link fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">Gmail Integration</h5>
+                    <p class="card-text">Connect your Gmail account for seamless email management.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pro Plan Features -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <h3 class="text-primary mb-4">
+                <i class="fas fa-star me-2"></i>Pro Plan Features
+                {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                <span class="badge bg-warning text-dark ms-2">Upgrade Required</span>
+                {% endif %}
+            </h3>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-primary{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-brain fa-3x text-primary mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Advanced AI Analysis</h5>
+                    <p class="card-text">Access Claude, GPT-4, and other advanced AI models for deeper email insights.</p>
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Pro
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-primary{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-file-alt fa-3x text-primary mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Document Processing</h5>
+                    <p class="card-text">Process PDF, DOCX, and XLSX attachments with AI analysis.</p>
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Pro
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-primary{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-lightbulb fa-3x text-primary mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Custom Insights</h5>
+                    <p class="card-text">Get personalized insights and recommendations tailored to your workflow.</p>
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Pro
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-primary{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-headset fa-3x text-primary mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Priority Support</h5>
+                    <p class="card-text">Get faster response times and dedicated support for your account.</p>
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Pro
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-primary{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Increased Limits</h5>
+                    <p class="card-text">Higher email processing limits and faster AI analysis.</p>
+                    {% if session.get('subscription_plan') != 'pro' and session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Pro
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enterprise Plan Features -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <h3 class="text-dark mb-4">
+                <i class="fas fa-crown me-2"></i>Enterprise Plan Features
+                {% if session.get('subscription_plan') != 'enterprise' %}
+                <span class="badge bg-warning text-dark ms-2">Upgrade Required</span>
+                {% endif %}
+            </h3>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-dark{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-users fa-3x text-dark mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Team Collaboration</h5>
+                    <p class="card-text">Collaborate with your team and share email insights across your organization.</p>
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Enterprise
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-dark{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-plug fa-3x text-dark mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Custom Integrations</h5>
+                    <p class="card-text">Integrate with your existing tools and workflows with custom API access.</p>
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Enterprise
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-dark{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-user-tie fa-3x text-dark mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Dedicated Manager</h5>
+                    <p class="card-text">Get a dedicated account manager for personalized support and onboarding.</p>
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Enterprise
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-dark{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-shield-alt fa-3x text-dark mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Advanced Security</h5>
+                    <p class="card-text">Enterprise-grade security, compliance, and data protection features.</p>
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Enterprise
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 {% if session.get('subscription_plan') != 'enterprise' %}border-warning{% else %}border-dark{% endif %}">
+                <div class="card-body text-center">
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    {% else %}
+                    <i class="fas fa-cogs fa-3x text-dark mb-3"></i>
+                    {% endif %}
+                    <h5 class="card-title">Custom AI Models</h5>
+                    <p class="card-text">Train and deploy custom AI models tailored to your specific business needs.</p>
+                    {% if session.get('subscription_plan') != 'enterprise' %}
+                    <a href="/pricing" class="btn btn-warning btn-sm mt-2">
+                        <i class="fas fa-arrow-up me-1"></i>Upgrade to Enterprise
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col text-center">
+            {% if session.get('user_id') %}
+            <a href="/dashboard" class="btn btn-outline-secondary me-2">Back to Dashboard</a>
+            {% endif %}
+            <a href="/pricing" class="btn btn-primary">View Pricing Plans</a>
+        </div>
+    </div>
+</div>
+
+<style>
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.card.border-warning {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+}
+
+.card.border-primary {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+}
+
+.card.border-success {
+    background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+}
+
+.card.border-dark {
+    background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+}
+
+.btn-warning {
+    background: linear-gradient(45deg, #ffc107, #ff8f00);
+    border: none;
+    color: #000;
+    font-weight: 600;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(45deg, #ff8f00, #ff6f00);
+    color: #000;
+    transform: translateY(-2px);
+}
+</style>
+{% endblock %} 

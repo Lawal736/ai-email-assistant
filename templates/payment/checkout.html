@@ -3,27 +3,11 @@
 {% block title %}Checkout - AI Email Assistant{% endblock %}
 
 {% block extra_css %}
-<script src="https://js.stripe.com/v3/"></script>
+<script src="https://js.paystack.co/v1/inline.js"></script>
 <style>
     .payment-form {
         max-width: 500px;
         margin: 0 auto;
-    }
-    
-    .StripeElement {
-        padding: 12px;
-        border: 1px solid #ced4da;
-        border-radius: 0.375rem;
-        background-color: white;
-    }
-    
-    .StripeElement--focus {
-        border-color: #6366f1;
-        box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
-    }
-    
-    .StripeElement--invalid {
-        border-color: #dc3545;
     }
     
     .order-summary {
@@ -79,6 +63,18 @@
                             <i class="fas fa-receipt me-2"></i>
                             Order Summary
                         </h5>
+                        
+                        <!-- Debug Information -->
+                        <div class="alert alert-info mb-3">
+                            <small>
+                                <strong>Debug Info:</strong><br>
+                                User Currency: {{ user_currency }}<br>
+                                Formatted Price: {{ formatted_price }}<br>
+                                Converted Price: {{ converted_price }}<br>
+                                Currency Symbol: {{ currency_symbol }}
+                            </small>
+                        </div>
+                        
                         <div class="row">
                             <div class="col-md-6">
                                 <p class="mb-1"><strong>Plan:</strong> {{ plan.name|title }}</p>
@@ -87,7 +83,7 @@
                             </div>
                             <div class="col-md-6 text-md-end">
                                 <h4 class="text-primary mb-0">
-                                    ${{ "%.2f"|format(plan.price_monthly if billing_period == 'monthly' else plan.price_yearly) }}
+                                    {{ formatted_price }}
                                     <small class="text-muted">/{{ billing_period }}</small>
                                 </h4>
                                 {% if billing_period == 'yearly' %}
@@ -112,7 +108,7 @@
                                 <i class="fas fa-credit-card fa-2x text-primary me-3"></i>
                                 <div>
                                     <h6 class="mb-1">Credit or Debit Card</h6>
-                                    <small class="text-muted">Visa, Mastercard, American Express</small>
+                                    <small class="text-muted">Visa, Mastercard, Verve</small>
                                 </div>
                             </div>
                         </div>
@@ -121,21 +117,12 @@
                     <!-- Payment Form -->
                     <form id="payment-form" class="payment-form">
                         <div class="mb-3">
-                            <label for="card-element" class="form-label">
-                                <i class="fas fa-credit-card me-2"></i>
-                                Card Information
+                            <label for="email" class="form-label">
+                                <i class="fas fa-envelope me-2"></i>
+                                Email Address
                             </label>
-                            <div id="card-element"></div>
-                            <div id="card-errors" class="text-danger mt-2" role="alert"></div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="name" class="form-label">
-                                <i class="fas fa-user me-2"></i>
-                                Name on Card
-                            </label>
-                            <input type="text" class="form-control" id="name" required 
-                                   placeholder="Enter the name on your card">
+                            <input type="email" class="form-control" id="email" required 
+                                   placeholder="Enter your email address">
                         </div>
 
                         <div class="mb-4">
@@ -148,10 +135,11 @@
                         </div>
 
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg" id="submit-button">
+                            <button type="submit" class="btn btn-primary btn-lg" id="submit-button" 
+                                    data-amount="{{ converted_price }}">
                                 <span class="spinner-border spinner-border-sm loading-spinner me-2" role="status"></span>
                                 <i class="fas fa-lock me-2"></i>
-                                Pay ${{ "%.2f"|format(plan.price_monthly if billing_period == 'monthly' else plan.price_yearly) }}
+                                Pay {{ formatted_price }}
                             </button>
                         </div>
                     </form>
@@ -160,7 +148,7 @@
                     <div class="text-center mt-4">
                         <small class="text-muted">
                             <i class="fas fa-shield-alt me-1"></i>
-                            Your payment is secured by Stripe. We never store your card information.
+                            Your payment is secured by Paystack. We never store your card information.
                         </small>
                     </div>
 
@@ -178,28 +166,6 @@
 </div>
 
 <script>
-// Initialize Stripe
-const stripe = Stripe('{{ stripe_public_key }}');
-const elements = stripe.elements();
-
-// Create card element
-const card = elements.create('card', {
-    style: {
-        base: {
-            fontSize: '16px',
-            color: '#424770',
-            '::placeholder': {
-                color: '#aab7c4',
-            },
-        },
-        invalid: {
-            color: '#9e2146',
-        },
-    },
-});
-
-card.mount('#card-element');
-
 // Handle form submission
 const form = document.getElementById('payment-form');
 const submitButton = document.getElementById('submit-button');
@@ -213,66 +179,46 @@ form.addEventListener('submit', async (event) => {
     loadingSpinner.style.display = 'inline-block';
     
     try {
-        // Create payment method
-        const {paymentMethod, error} = await stripe.createPaymentMethod({
-            type: 'card',
-            card: card,
-            billing_details: {
-                name: document.getElementById('name').value,
-            },
-        });
+        // Get form data
+        const email = document.getElementById('email').value;
+        const plan = '{{ plan.name }}';
+        const billingPeriod = '{{ billing_period }}';
+        const amount = parseFloat(submitButton.getAttribute('data-amount'));
         
-        if (error) {
-            const errorElement = document.getElementById('card-errors');
-            errorElement.textContent = error.message;
-            submitButton.disabled = false;
-            loadingSpinner.style.display = 'none';
-            return;
-        }
-        
-        // Send to server
+        // Create payment session
         const response = await fetch('/payment/process', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                payment_method_id: paymentMethod.id,
-                plan: '{{ plan.name }}',
-                billing_period: '{{ billing_period }}',
-                save_payment: document.getElementById('save-payment').checked
+                plan: plan,
+                billing_period: billingPeriod,
+                email: email
             }),
         });
         
         const result = await response.json();
         
         if (result.success) {
-            // Redirect to success page
-            window.location.href = '/payment/success?session_id=' + result.session_id;
+            // ✅ FIXED: Use the authorization_url from backend
+            console.log('🔍 [DEBUG] Backend returned authorization_url:', result.authorization_url);
+            console.log('🔍 [DEBUG] Backend returned reference:', result.reference);
+            
+            // Redirect to Paystack's authorization URL directly
+            window.location.href = result.authorization_url;
         } else {
             // Show error
-            const errorElement = document.getElementById('card-errors');
-            errorElement.textContent = result.error || 'Payment failed. Please try again.';
+            alert(result.error || 'Payment failed. Please try again.');
             submitButton.disabled = false;
             loadingSpinner.style.display = 'none';
         }
         
     } catch (error) {
         console.error('Error:', error);
-        const errorElement = document.getElementById('card-errors');
-        errorElement.textContent = 'An unexpected error occurred. Please try again.';
+        alert('An unexpected error occurred. Please try again.');
         submitButton.disabled = false;
         loadingSpinner.style.display = 'none';
-    }
-});
-
-// Handle card errors
-card.addEventListener('change', ({error}) => {
-    const displayError = document.getElementById('card-errors');
-    if (error) {
-        displayError.textContent = error.message;
-    } else {
-        displayError.textContent = '';
     }
 });
 

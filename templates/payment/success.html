@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Successful - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg">
+                <div class="card-header bg-success text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Payment Successful!
+                    </h3>
+                </div>
+                
+                <div class="card-body p-4 text-center">
+                    <div class="mb-4">
+                        <i class="fas fa-check-circle text-success" style="font-size: 4rem;"></i>
+                    </div>
+                    
+                    <h4 class="text-success mb-3">Thank you for your subscription!</h4>
+                    
+                    <p class="lead mb-4">
+                        Your payment has been processed successfully. Your subscription is now active and you can start using all the premium features.
+                    </p>
+                    
+                    {% if reference %}
+                    <div class="alert alert-info">
+                        <strong>Transaction Reference:</strong> {{ reference }}
+                    </div>
+                    {% endif %}
+                    
+                    {% if transaction_data %}
+                    <div class="row justify-content-center mb-4">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title">Transaction Details</h6>
+                                    <div class="row">
+                                        <div class="col-6 text-start">
+                                            <small class="text-muted">Amount:</small><br>
+                                            <strong>{{ transaction_data.currency }} {{ transaction_data.amount|default('N/A') }}</strong>
+                                        </div>
+                                        <div class="col-6 text-end">
+                                            <small class="text-muted">Status:</small><br>
+                                            <span class="badge bg-success">{{ transaction_data.status|default('Success') }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg me-md-2">
+                            <i class="fas fa-tachometer-alt me-2"></i>
+                            Go to Dashboard
+                        </a>
+                        <a href="{{ url_for('account') }}" class="btn btn-outline-primary btn-lg">
+                            <i class="fas fa-user me-2"></i>
+                            View Account
+                        </a>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <small class="text-muted">
+                            <i class="fas fa-envelope me-1"></i>
+                            A confirmation email has been sent to your registered email address.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

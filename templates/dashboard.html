@@ -50,7 +50,7 @@
                     <i class="fas fa-chart-pie me-2"></i>
                     Daily Summary
                 </h4>
-                <button class="btn btn-sm btn-outline-primary" onclick="loadAIAnalysis()" id="loadAIBtn">
+                <button class="btn btn-sm btn-primary" onclick="loadAIAnalysis()" id="loadAIBtn">
                     <i class="fas fa-magic me-1"></i>
                     Load AI Analysis
                 </button>
@@ -112,10 +112,10 @@
     <div class="col-lg-4 mb-4">
         <div class="card">
             <div class="card-header">
-                <h4 class="mb-0">
+                <h5 class="mb-0">
                     <i class="fas fa-bolt me-2"></i>
                     Quick Actions
-                </h4>
+                </h5>
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
@@ -131,10 +131,68 @@
                         <i class="fas fa-comments me-2"></i>
                         View Threads
                     </button>
+                    {% if session.get('subscription_plan') == 'pro' or session.get('subscription_plan') == 'enterprise' %}
+                    <button class="btn btn-outline-warning" onclick="showCustomInsights()">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        Custom Insights
+                    </button>
+                    {% endif %}
+                    <a href="{{ url_for('features') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-star me-2"></i>
+                        View All Features
+                    </a>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Custom Insights Section (Pro/Enterprise Only) -->
+    {% if session.get('subscription_plan') == 'pro' or session.get('subscription_plan') == 'enterprise' %}
+    <div class="col-12 mb-4" id="customInsightsSection" style="display: none;">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    Custom Insights
+                    <small class="text-muted ms-2">- Analyze emails based on your specific criteria</small>
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="customCriteria" class="form-label">Analysis Criteria</label>
+                            <textarea class="form-control" id="customCriteria" rows="3" 
+                                placeholder="Enter keywords or criteria to analyze (e.g., 'urgent, deadline, project, meeting')"></textarea>
+                            <div class="form-text">Separate multiple criteria with commas</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="emailCount" class="form-label">Number of Emails to Analyze</label>
+                            <select class="form-select" id="emailCount">
+                                <option value="10">10 emails</option>
+                                <option value="20" selected>20 emails</option>
+                                <option value="50">50 emails</option>
+                                <option value="100">100 emails</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-warning" onclick="generateCustomInsights()" id="generateInsightsBtn">
+                            <i class="fas fa-magic me-2"></i>
+                            Generate Custom Insights
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <div id="customInsightsResult">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Custom Insights:</strong> Enter your analysis criteria and click "Generate Custom Insights" to get personalized AI analysis of your emails.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Action Items -->
     <div class="col-lg-6 mb-4">
@@ -649,66 +707,95 @@ Object.entries(emailThreads).forEach(([key, thread]) => {
     });
 });
 
+// Check subscription level for feature access
+function checkSubscriptionLevel(requiredLevel) {
+    const userPlan = '{{ session.get("subscription_plan", "free") }}';
+    const planHierarchy = ['free', 'pro', 'enterprise'];
+    
+    const userIndex = planHierarchy.indexOf(userPlan);
+    const requiredIndex = planHierarchy.indexOf(requiredLevel);
+    
+    return userIndex >= requiredIndex;
+}
+
+// Handle subscription-gated features
+function handleSubscriptionGatedFeature(featureName, requiredLevel, callback) {
+    if (checkSubscriptionLevel(requiredLevel)) {
+        callback();
+    } else {
+        const planNames = {
+            'pro': 'Pro',
+            'enterprise': 'Enterprise'
+        };
+        const requiredPlan = planNames[requiredLevel] || requiredLevel;
+        
+        Swal.fire({
+            title: 'Feature Requires Upgrade',
+            html: `
+                <div class="text-center">
+                    <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                    <h5>${featureName} requires a ${requiredPlan} subscription</h5>
+                    <p class="text-muted">Upgrade your plan to access this advanced feature.</p>
+                </div>
+            `,
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'Upgrade Now',
+            cancelButtonText: 'Maybe Later',
+            confirmButtonColor: '#007bff'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = '/pricing';
+            }
+        });
+    }
+}
+
+// Enhanced AI analysis with subscription check
 function loadAIAnalysis() {
-    const btn = document.getElementById('loadAIBtn');
-    const summaryContent = document.getElementById('summaryContent');
-    
-    // Show loading state
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
-    
-    summaryContent.innerHTML = `
-        <div class="alert alert-info">
-            <i class="fas fa-spinner fa-spin me-2"></i>
-            <strong>AI Analysis in Progress:</strong> Analyzing your emails with Claude and OpenAI...
-            <br><small class="text-muted">This may take a few moments.</small>
-        </div>
-    `;
-    
-    // Call the API to process emails
-    fetch('/api/process-emails')
-        .then(response => response.json())
+    handleSubscriptionGatedFeature('Advanced AI Analysis', 'pro', () => {
+        var btn = document.getElementById('loadAIBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Loading...';
+        
+        var emailId = (emails && emails.length > 0) ? emails[0].id : null;
+        if (!emailId) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Load AI Analysis';
+            document.getElementById('summaryContent').innerHTML = '<div class="alert alert-danger">No emails available to analyze.</div>';
+            return;
+        }
+        
+        fetch('/api/analyze-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email_id: emailId })
+        })
+        .then(response => {
+            if (response.status === 403) {
+                throw new Error('Subscription required');
+            }
+            return response.json();
+        })
         .then(data => {
-            if (data.success) {
-                // Update summary
-                summaryContent.innerHTML = `
-                    <div class="summary-text">
-                        ${data.summary}
-                    </div>
-                `;
-                
-                // Update action items
-                updateActionItems(data.action_items);
-                
-                // Update recommendations
-                updateRecommendations(data.recommendations);
-                
-                // Update counts
-                document.getElementById('actionItemsCount').textContent = data.action_items.length;
-                document.getElementById('recommendationsCount').textContent = data.recommendations.length;
-                
-                // Show success message
-                showAlert('success', 'AI analysis completed successfully!');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Load AI Analysis';
+            if (data.success && data.content) {
+                document.getElementById('summaryContent').innerHTML = '<div class="summary-text">' + data.content + '</div>';
             } else {
-                throw new Error(data.error || 'Failed to process emails');
+                document.getElementById('summaryContent').innerHTML = '<div class="alert alert-danger">' + (data.error || 'Failed to process emails. Please try again later.') + '</div>';
             }
         })
-        .catch(error => {
-            console.error('Error:', error);
-            summaryContent.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Error:</strong> ${error.message}
-                    <br><small class="text-muted">Please try again later.</small>
-                </div>
-            `;
-            showAlert('danger', 'Failed to load AI analysis');
-        })
-        .finally(() => {
-            // Reset button
+        .catch(err => {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-magic me-1"></i>Load AI Analysis';
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Load AI Analysis';
+            if (err.message === 'Subscription required') {
+                handleSubscriptionGatedFeature('Advanced AI Analysis', 'pro', () => {});
+            } else {
+                document.getElementById('summaryContent').innerHTML = '<div class="alert alert-danger">Error: Failed to process emails. Please try again later.</div>';
+            }
         });
+    });
 }
 
 function updateActionItems(actionItems) {
@@ -1159,6 +1246,145 @@ function copyResponse() {
     navigator.clipboard.writeText(responseText).then(() => {
         showAlert('success', 'Response copied to clipboard!');
     });
+}
+
+// Custom Insights Functions
+function showCustomInsights() {
+    const section = document.getElementById('customInsightsSection');
+    if (section) {
+        section.style.display = 'block';
+        section.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+function generateCustomInsights() {
+    const criteria = document.getElementById('customCriteria').value.trim();
+    const emailCount = document.getElementById('emailCount').value;
+    const resultDiv = document.getElementById('customInsightsResult');
+    const generateBtn = document.getElementById('generateInsightsBtn');
+    
+    if (!criteria) {
+        showAlert('error', 'Please enter analysis criteria');
+        return;
+    }
+    
+    // Show loading state
+    generateBtn.disabled = true;
+    generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating...';
+    
+    resultDiv.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-warning mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h5>Generating Custom Insights</h5>
+            <p class="text-muted">Analyzing emails based on: "${criteria}"</p>
+        </div>
+    `;
+    
+    // Call the custom insights API
+    fetch('/api/pro/custom-insights', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            criteria: criteria,
+            email_count: parseInt(emailCount),
+            type: 'general'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div class="mb-3">
+                    <h5><i class="fas fa-lightbulb me-2"></i>Custom Insights Generated</h5>
+                    <p class="text-muted">Analysis based on: "${criteria}"</p>
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">
+                                <i class="fas fa-envelope me-1"></i>
+                                ${data.emails_analyzed} emails analyzed
+                            </small>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">
+                                <i class="fas fa-robot me-1"></i>
+                                ${data.feature || 'Pro Custom Insights'}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                <div class="border-top pt-3">
+                    <h6>Custom Analysis:</h6>
+                    <div class="analysis-content bg-light p-3 rounded">
+                        ${formatAnalysisContent(data.custom_insights)}
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-outline-primary" onclick="copyCustomInsights()">
+                        <i class="fas fa-copy me-1"></i>
+                        Copy Insights
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="exportCustomInsights()">
+                        <i class="fas fa-download me-1"></i>
+                        Export
+                    </button>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Analysis Failed:</strong> ${data.error || 'Unknown error'}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error generating custom insights:', error);
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> Failed to generate custom insights. Please try again.
+            </div>
+        `;
+    })
+    .finally(() => {
+        // Reset button state
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Generate Custom Insights';
+    });
+}
+
+function copyCustomInsights() {
+    const insightsText = document.querySelector('#customInsightsResult .analysis-content').textContent;
+    navigator.clipboard.writeText(insightsText).then(() => {
+        showAlert('success', 'Custom insights copied to clipboard!');
+    });
+}
+
+function exportCustomInsights() {
+    const criteria = document.getElementById('customCriteria').value;
+    const insightsText = document.querySelector('#customInsightsResult .analysis-content').textContent;
+    const timestamp = new Date().toISOString().split('T')[0];
+    
+    const content = `Custom Insights Report
+Generated: ${new Date().toLocaleString()}
+Criteria: ${criteria}
+
+${insightsText}`;
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `custom-insights-${timestamp}.txt`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    showAlert('success', 'Custom insights exported!');
 }
 
 // Auto-refresh every 5 minutes

@@ -33,13 +33,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Production stage
 FROM python:3.12-slim
 
-# Set working directory
-WORKDIR /app
-
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 
 # Install runtime dependencies
@@ -50,24 +46,27 @@ RUN apt-get update \
         libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Set work directory
+WORKDIR /app
+
 # Copy virtual environment from builder stage
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application code
+# Copy project
 COPY . .
 
-# Create non-root user
+# Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app
 
 # Expose port
-EXPOSE 5001
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5001/ || exit 1
+    CMD curl -f http://localhost:8080/ || exit 1
 
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "app:app"] 
+# Run the application with Gunicorn
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 --access-logfile - --error-logfile - app:app 

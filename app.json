@@ -1,0 +1,39 @@
+{
+  "name": "AI Email Assistant",
+  "description": "AI-powered email assistant with Gmail integration, OpenAI GPT-4, and payment processing",
+  "repository": "https://github.com/yourusername/ai-email-assistant",
+  "keywords": ["python", "flask", "ai", "email", "gmail", "openai"],
+  "env": {
+    "FLASK_ENV": {
+      "description": "Flask environment",
+      "value": "production"
+    },
+    "SECRET_KEY": {
+      "description": "Flask secret key",
+      "generator": "secret"
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key"
+    },
+    "GOOGLE_CLIENT_ID": {
+      "description": "Google OAuth client ID"
+    },
+    "GOOGLE_CLIENT_SECRET": {
+      "description": "Google OAuth client secret"
+    },
+    "PAYSTACK_SECRET_KEY": {
+      "description": "Paystack secret key"
+    },
+    "STRIPE_SECRET_KEY": {
+      "description": "Stripe secret key"
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "Anthropic API key"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+} 

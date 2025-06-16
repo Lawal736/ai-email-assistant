@@ -26,6 +26,10 @@
                             <i class="fas fa-receipt me-2"></i>
                             Billing History
                         </a>
+                        <a href="#linked-accounts" class="list-group-item list-group-item-action">
+                            <i class="fas fa-link me-2"></i>
+                            Linked Accounts
+                        </a>
                     </div>
                 </div>
             </div>
@@ -60,28 +64,38 @@
                         <label class="form-label fw-bold">Profile Email Address</label>
                         <p class="form-control-plaintext">{{ user.email }}</p>
                     </div>
-                    {% if gmail_profile %}
                     <div class="mb-3">
                         <label class="form-label fw-bold">Linked Gmail Address</label>
-                        <p class="form-control-plaintext">
-                            <i class="fas fa-envelope text-success me-2"></i>
-                            {{ gmail_profile.email }}
-                            <span class="badge bg-success ms-2">Connected</span>
-                        </p>
-                    </div>
-                    {% else %}
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Linked Gmail Address</label>
-                        <p class="form-control-plaintext">
+                        {% if user.gmail_email %}
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <i class="fas fa-envelope text-success me-2"></i>
+                                {{ user.gmail_email }}
+                                <span class="badge bg-success ms-2">Connected</span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDisconnectGmail()">
+                                <i class="fas fa-unlink me-1"></i>Disconnect
+                            </button>
+                        </div>
+                        {% if gmail_profile %}
+                        <div class="mt-2 small text-muted ms-4">
+                            <i class="fas fa-user-circle me-1"></i>
+                            <b>Gmail Profile:</b> {{ gmail_profile.email }}<br>
+                            <span>Messages: {{ gmail_profile.messages_total }}, Threads: {{ gmail_profile.threads_total }}</span>
+                        </div>
+                        {% else %}
+                        <div class="mt-2 small text-muted ms-4">
+                            <i class="fas fa-info-circle me-1"></i>
+                            No Gmail profile info available
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <div class="d-flex align-items-center">
                             <i class="fas fa-envelope text-muted me-2"></i>
-                            <span class="text-muted">Not connected</span>
-                            <a href="{{ url_for('connect_gmail') }}" class="btn btn-sm btn-outline-primary ms-2">
-                                <i class="fas fa-link me-1"></i>
-                                Connect Gmail
-                            </a>
-                        </p>
+                            <span class="text-muted">No Gmail account linked</span>
+                        </div>
+                        {% endif %}
                     </div>
-                    {% endif %}
                     <div class="alert alert-info mt-3">
                         <i class="fas fa-info-circle me-2"></i>
                         <small>
@@ -91,11 +105,45 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Member Since</label>
-                        <p class="form-control-plaintext">{{ user.created_at or 'Unknown' }}</p>
+                        <p class="form-control-plaintext">{{ user.formatted_created_at }}</p>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Last Login</label>
-                        <p class="form-control-plaintext">{{ user.last_login or 'Never' }}</p>
+                        <p class="form-control-plaintext">{{ user.formatted_last_login }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Linked Accounts Section -->
+            <div class="card mb-4" id="linked-accounts">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-link me-2"></i>
+                        Linked Accounts
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center justify-content-between p-3 border rounded">
+                                <div>
+                                    <div class="d-flex align-items-center">
+                                        <i class="fab fa-google text-danger me-2"></i>
+                                        {% if user.gmail_email %}
+                                            <span>{{ user.gmail_email }}</span>
+                                            <span class="badge bg-success ms-2">Connected</span>
+                                        {% else %}
+                                            <span class="text-muted">No Gmail account linked</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% if user.gmail_email %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDisconnectGmail()">
+                                    <i class="fas fa-unlink me-1"></i>Disconnect
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -155,8 +203,8 @@
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Emails Processed This Month</label>
                                 <div class="d-flex align-items-center">
+                                    {% set usage_percentage = (user.api_usage_count / user.monthly_usage_limit * 100) if user.monthly_usage_limit > 0 else 0 %}
                                     <div class="progress flex-grow-1 me-3" style="height: 20px;">
-                                        {% set usage_percentage = (user.api_usage_count / user.monthly_usage_limit * 100) if user.monthly_usage_limit > 0 else 0 %}
                                         <div class="progress-bar bg-{{ 'danger' if usage_percentage > 90 else 'warning' if usage_percentage > 70 else 'success' }}" 
                                              style="width: {{ usage_percentage }}%">
                                         </div>
@@ -222,7 +270,7 @@
                                         <td>
                                             <span class="badge bg-primary">{{ payment.plan_name|title }}</span>
                                         </td>
-                                        <td>${{ "%.2f"|format(payment.amount) }}</td>
+                                        <td>{{ payment.currency_symbol }}{{ payment.formatted_amount }}</td>
                                         <td>
                                             <span class="badge bg-{{ 'success' if payment.status == 'succeeded' else 'warning' if payment.status == 'pending' else 'danger' }}">
                                                 {{ payment.status|title }}
@@ -251,4 +299,69 @@
         </div>
     </div>
 </div>
+
+<script>
+function confirmDisconnectGmail() {
+    if (confirm('Are you sure you want to disconnect your Gmail account? This will:\n\n• Stop email analysis and processing\n• Remove access to your Gmail data\n• Disable AI features that require email access\n\nYou can reconnect at any time.')) {
+        disconnectGmail();
+    }
+}
+
+function disconnectGmail() {
+    // Show loading state
+    const disconnectBtn = event.target;
+    const originalText = disconnectBtn.innerHTML;
+    disconnectBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Disconnecting...';
+    disconnectBtn.disabled = true;
+    
+    fetch('/api/disconnect-gmail', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message and reload page
+            showAlert('success', 'Gmail account disconnected successfully!');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            // Show error message
+            showAlert('danger', data.error || 'Failed to disconnect Gmail account');
+            disconnectBtn.innerHTML = originalText;
+            disconnectBtn.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'An error occurred while disconnecting Gmail');
+        disconnectBtn.innerHTML = originalText;
+        disconnectBtn.disabled = false;
+    });
+}
+
+function showAlert(type, message) {
+    // Create alert element
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Add to page
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
 {% endblock %} 

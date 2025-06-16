@@ -24,15 +24,21 @@ class GmailService:
     def __init__(self):
         self.credentials = None
         self.service = None
-        # Try to load credentials, but don't fail if they don't exist
-        try:
-            self._load_credentials()
-        except Exception as e:
-            print(f"Note: Gmail credentials not loaded: {e}")
-            self.credentials = None
+        # Don't automatically load credentials to prevent caching issues
+        # Credentials will be loaded explicitly when needed
+        print("✅ Gmail service initialized (no auto-load)")
     
     def _get_redirect_uri(self):
-        """Get the OAuth redirect URI based on current port"""
+        """Get the OAuth redirect URI based on environment"""
+        # Check if we're in production (Cloud Run)
+        if os.environ.get('K_SERVICE') or os.environ.get('CLOUD_RUN_SERVICE'):
+            # Production environment - use the actual domain
+            domain = os.environ.get('DOMAIN', 'app.inbox-genius.com')
+            redirect_uri = f'https://{domain}/oauth2callback'
+            print(f"🔗 Production OAuth redirect URI: {redirect_uri}")
+            return redirect_uri
+        
+        # Local development
         # Try to get port from multiple sources
         port = None
         
@@ -60,7 +66,7 @@ class GmailService:
             port = '5004'
         
         redirect_uri = f'http://localhost:{port}/oauth2callback'
-        print(f"🔗 OAuth redirect URI: {redirect_uri}")
+        print(f"🔗 Local OAuth redirect URI: {redirect_uri}")
         return redirect_uri
     
     def _load_credentials(self):
@@ -94,92 +100,148 @@ class GmailService:
         """Check if Gmail is authenticated"""
         return self.credentials is not None and self.credentials.valid
     
+    def _get_credentials_data(self):
+        """Get credentials data from environment variable or file"""
+        # First try to get from environment variable (for Cloud Run)
+        credentials_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        if credentials_json:
+            try:
+                return json.loads(credentials_json)
+            except json.JSONDecodeError as e:
+                print(f"Error parsing GOOGLE_CREDENTIALS_JSON: {e}")
+        
+        # Fallback to file (for local development)
+        creds_path = 'credentials.json'
+        if os.path.exists(creds_path):
+            try:
+                with open(creds_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error reading credentials file: {e}")
+        
+        raise FileNotFoundError(
+            "Google credentials not found. Please set GOOGLE_CREDENTIALS_JSON environment variable "
+            "or place credentials.json in the project root directory."
+        )
+    
     def _authenticate(self):
         """Authenticate with Gmail API using OAuth2"""
-        creds_path = 'credentials.json'
-        if not os.path.exists(creds_path):
+        try:
+            credentials_data = self._get_credentials_data()
+            
+            # Create a temporary file for the credentials
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                json.dump(credentials_data, temp_file)
+                temp_file_path = temp_file.name
+            
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(temp_file_path, self.SCOPES)
+                self.credentials = flow.run_local_server(port=0)
+                
+                # Save credentials for future use
+                with open('token.json', 'w') as token:
+                    token.write(self.credentials.to_json())
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                    
+        except Exception as e:
             raise FileNotFoundError(
-                "credentials.json not found. Please download it from Google Cloud Console "
-                "and place it in the project root directory."
+                f"Failed to authenticate with Gmail API: {e}. Please ensure credentials are properly configured."
             )
-        
-        flow = InstalledAppFlow.from_client_secrets_file(creds_path, self.SCOPES)
-        self.credentials = flow.run_local_server(port=0)
-        
-        # Save credentials for future use
-        with open('token.json', 'w') as token:
-            token.write(self.credentials.to_json())
     
     def get_authorization_url(self):
         """Get authorization URL for OAuth flow"""
-        creds_path = 'credentials.json'
-        if not os.path.exists(creds_path):
-            raise FileNotFoundError("credentials.json not found")
-        
-        # Load credentials to determine type
-        with open(creds_path, 'r') as f:
-            creds_data = json.load(f)
-        
-        # Check if it's a web application
-        if 'web' in creds_data:
-            # Use web application flow with dynamic redirect URI
-            redirect_uri = self._get_redirect_uri()
-            print(f"🔗 Using OAuth redirect URI: {redirect_uri}")
+        try:
+            credentials_data = self._get_credentials_data()
             
-            flow = Flow.from_client_secrets_file(
-                creds_path,
-                scopes=self.SCOPES,
-                redirect_uri=redirect_uri
-            )
+            # Create a temporary file for the credentials
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                json.dump(credentials_data, temp_file)
+                temp_file_path = temp_file.name
             
-            # Generate authorization URL
-            auth_url, _ = flow.authorization_url(
-                access_type='offline',
-                include_granted_scopes='true',
-                prompt='consent'  # Force consent to get refresh token
-            )
-            
-            return auth_url
-        else:
-            # Use desktop application flow
-            flow = InstalledAppFlow.from_client_secrets_file(creds_path, self.SCOPES)
-            auth_url, _ = flow.authorization_url()
-            return auth_url
+            try:
+                # Check if it's a web application
+                if 'web' in credentials_data:
+                    # Use web application flow with dynamic redirect URI
+                    redirect_uri = self._get_redirect_uri()
+                    print(f"🔗 Using OAuth redirect URI: {redirect_uri}")
+                    
+                    flow = Flow.from_client_secrets_file(
+                        temp_file_path,
+                        scopes=self.SCOPES,
+                        redirect_uri=redirect_uri
+                    )
+                    
+                    # Generate authorization URL
+                    auth_url, _ = flow.authorization_url(
+                        access_type='offline',
+                        include_granted_scopes='true',
+                        prompt='consent'  # Force consent to get refresh token
+                    )
+                    
+                    return auth_url
+                else:
+                    # Use desktop application flow
+                    flow = InstalledAppFlow.from_client_secrets_file(temp_file_path, self.SCOPES)
+                    auth_url, _ = flow.authorization_url()
+                    return auth_url
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                    
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to get authorization URL: {e}")
     
     def exchange_code_for_tokens(self, code):
         """Exchange authorization code for tokens"""
-        creds_path = 'credentials.json'
-        
-        # Load credentials to determine type
-        with open(creds_path, 'r') as f:
-            creds_data = json.load(f)
-        
-        # Check if it's a web application
-        if 'web' in creds_data:
-            # Use web application flow with dynamic redirect URI
-            redirect_uri = self._get_redirect_uri()
-            print(f"🔄 Exchanging code using redirect URI: {redirect_uri}")
+        try:
+            credentials_data = self._get_credentials_data()
             
-            flow = Flow.from_client_secrets_file(
-                creds_path,
-                scopes=self.SCOPES,
-                redirect_uri=redirect_uri
-            )
+            # Create a temporary file for the credentials
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                json.dump(credentials_data, temp_file)
+                temp_file_path = temp_file.name
             
-            # Exchange code for tokens
-            flow.fetch_token(code=code)
-            self.credentials = flow.credentials
-        else:
-            # Use desktop application flow
-            flow = InstalledAppFlow.from_client_secrets_file(creds_path, self.SCOPES)
-            flow.fetch_token(code=code)
-            self.credentials = flow.credentials
-        
-        # Save credentials
-        with open('token.json', 'w') as token:
-            token.write(self.credentials.to_json())
-        
-        print("✅ OAuth tokens saved successfully")
+            try:
+                # Check if it's a web application
+                if 'web' in credentials_data:
+                    # Use web application flow with dynamic redirect URI
+                    redirect_uri = self._get_redirect_uri()
+                    print(f"🔄 Exchanging code using redirect URI: {redirect_uri}")
+                    
+                    flow = Flow.from_client_secrets_file(
+                        temp_file_path,
+                        scopes=self.SCOPES,
+                        redirect_uri=redirect_uri
+                    )
+                    
+                    # Exchange code for tokens
+                    flow.fetch_token(code=code)
+                    self.credentials = flow.credentials
+                else:
+                    # Use desktop application flow
+                    flow = InstalledAppFlow.from_client_secrets_file(temp_file_path, self.SCOPES)
+                    flow.fetch_token(code=code)
+                    self.credentials = flow.credentials
+                
+                # Save credentials
+                with open('token.json', 'w') as token:
+                    token.write(self.credentials.to_json())
+                
+                print("✅ OAuth tokens saved successfully")
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                    
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to exchange code for tokens: {e}")
     
     def get_token_data(self):
         """Get the current token data as a dictionary"""
@@ -477,4 +539,27 @@ class GmailService:
             return None
         except Exception as e:
             print(f'Error getting Gmail profile: {e}')
-            return None 
+            return None
+    
+    def logout(self):
+        """Clear Gmail credentials and service state"""
+        try:
+            # Clear credentials
+            self.credentials = None
+            self.service = None
+            
+            # Remove token file if it exists
+            token_path = 'token.json'
+            if os.path.exists(token_path):
+                os.remove(token_path)
+                print(f"✅ Gmail token file removed: {token_path}")
+            
+            print("✅ Gmail service logged out successfully")
+        except Exception as e:
+            print(f"⚠️ Error during Gmail logout: {e}")
+    
+    def clear_credentials(self):
+        """Clear credentials without removing token file (for temporary disconnection)"""
+        self.credentials = None
+        self.service = None
+        print("✅ Gmail credentials cleared") 

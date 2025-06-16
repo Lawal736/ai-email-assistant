@@ -11,12 +11,34 @@ from email_processor import EmailProcessor
 from document_processor import DocumentProcessor
 from models import DatabaseManager, User, SubscriptionPlan, PaymentRecord
 from payment_service import PaymentService
+from currency_service import currency_service
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
+
+# Configure session for production vs development
+if os.environ.get('K_SERVICE') or os.environ.get('CLOUD_RUN_SERVICE'):
+    # Production environment (Cloud Run)
+    app.config.update(
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax',
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30)
+    )
+    print("🔧 Production session configuration applied")
+else:
+    # Development environment
+    app.config.update(
+        SESSION_COOKIE_SECURE=False,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax',
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30)
+    )
+    print("🔧 Development session configuration applied")
+
 CORS(app)
 
 # Initialize database and services
@@ -75,6 +97,11 @@ def login_required(f):
     return decorated_function
 
 def subscription_required(plan_name='free'):
+    """
+    Enhanced subscription decorator that checks plan hierarchy:
+    - free < pro < enterprise
+    - Users with higher plans can access lower plan features
+    """
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -87,9 +114,22 @@ def subscription_required(plan_name='free'):
                 flash('User not found', 'error')
                 return redirect(url_for('login'))
             
-            # Check if user has required subscription
-            if user['subscription_plan'] == 'free' and plan_name != 'free':
-                flash(f'This feature requires a {plan_name} subscription', 'warning')
+            user_plan = user.get('subscription_plan', 'free')
+            
+            # Define plan hierarchy (higher index = higher tier)
+            plan_hierarchy = ['free', 'pro', 'enterprise']
+            
+            # Check if user has required subscription level
+            required_index = plan_hierarchy.index(plan_name)
+            user_index = plan_hierarchy.index(user_plan)
+            
+            if user_index < required_index:
+                plan_display_names = {
+                    'pro': 'Pro',
+                    'enterprise': 'Enterprise'
+                }
+                required_plan = plan_display_names.get(plan_name, plan_name.title())
+                flash(f'This feature requires a {required_plan} subscription. Please upgrade to access advanced features.', 'warning')
                 return redirect(url_for('pricing'))
             
             return f(*args, **kwargs)
@@ -167,14 +207,20 @@ def logout():
     try:
         if gmail_service:
             gmail_service.logout()
-    except:
-        pass
+    except Exception as e:
+        print(f"⚠️ Error clearing Gmail credentials: {e}")
     
-    # Clear session
+    # Clear all session data
     session.clear()
     
+    # Create response to clear cookies
+    response = redirect(url_for('index'))
+    
+    # Clear session cookie explicitly
+    response.delete_cookie('session')
+    
     flash('Logged out successfully', 'success')
-    return redirect(url_for('index'))
+    return response
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
@@ -267,23 +313,49 @@ def index():
 @app.route('/pricing')
 def pricing():
     """Pricing page"""
+    # Get user's IP address for currency detection
+    user_ip = request.remote_addr
+    
+    # Detect user's currency
+    user_currency = currency_service.detect_user_currency(user_ip)
+    
+    # Get plans from database
     if plan_model:
         plans = plan_model.get_all_plans()
     else:
         plans = []
-    return render_template('pricing.html', plans=plans)
+    
+    # Convert plan prices to user's currency
+    converted_plans = currency_service.convert_plan_prices(plans, user_currency)
+    
+    # Get currency info
+    currency_info = currency_service.get_currency_info(user_currency)
+    
+    # Save user's currency preference if logged in
+    if session.get('user_id'):
+        currency_service.save_user_currency_preference(session['user_id'], user_currency)
+    
+    return render_template('pricing.html', 
+                         plans=converted_plans, 
+                         currency_info=currency_info,
+                         user_currency=user_currency)
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     """Dashboard page"""
+    user_id = session.get('user_id')
+    user = user_model.get_user_by_id(user_id) if user_model else None
+    if user:
+        session['subscription_plan'] = user.get('subscription_plan', 'free')
+        session['subscription_status'] = user.get('subscription_status', 'inactive')
+        session['subscription_expires'] = user.get('subscription_expires')
     # Check if Gmail service is available
     if not gmail_service:
         flash('Gmail service is not available. Please check your configuration.', 'error')
         return redirect(url_for('index'))
     
     # Check if Gmail is authenticated for this user
-    user_id = session.get('user_id')
     gmail_token = user_model.get_gmail_token(user_id) if user_model else None
     
     if not gmail_token:
@@ -389,110 +461,199 @@ def oauth2callback():
     """Handle OAuth callback"""
     try:
         print("🔍 OAuth callback received")
-        
         # Get authorization code from query parameters
         code = request.args.get('code')
         if not code:
             print("❌ No authorization code received")
             flash('Authorization code not received', 'error')
             return redirect(url_for('connect_gmail'))
-        
         print(f"✅ Authorization code received: {code[:20]}...")
-        
         # Exchange code for tokens
         gmail_service.exchange_code_for_tokens(code)
         print("✅ Code exchanged for tokens")
-        
         # Save Gmail token for user
         user_id = session.get('user_id')
         print(f"🔍 User ID from session: {user_id}")
-        
         token_data = gmail_service.get_token_data()
         print(f"🔍 Token data received: {token_data is not None}")
-        
+        gmail_email = None
+        # Fetch Gmail email address from profile
+        try:
+            profile = gmail_service.get_user_profile()
+            gmail_email = profile.get('email') if profile else None
+            print(f"✅ Gmail email fetched: {gmail_email}")
+        except Exception as e:
+            print(f"⚠️ Could not fetch Gmail email: {e}")
         if user_model and token_data:
-            user_model.update_gmail_token(user_id, json.dumps(token_data))
-            print("✅ Gmail token saved to database")
+            user_model.update_gmail_token(user_id, json.dumps(token_data), gmail_email)
+            print("✅ Gmail token and email saved to database")
         else:
             print("❌ Failed to save token - user_model or token_data is None")
-        
         # Set session variable to indicate Gmail is authenticated
         session['gmail_authenticated'] = True
         print("✅ Session updated with Gmail authentication")
-        
         flash('Gmail connected successfully!', 'success')
         return redirect(url_for('dashboard'))
-    
     except Exception as e:
         print(f"❌ Error in OAuth callback: {str(e)}")
         flash(f'Error during authentication: {str(e)}', 'error')
         return redirect(url_for('connect_gmail'))
 
+@app.route('/api/disconnect-gmail', methods=['POST'])
+@login_required
+def api_disconnect_gmail():
+    """Disconnect Gmail account"""
+    try:
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'User not authenticated'})
+        
+        # Clear Gmail service credentials
+        if gmail_service:
+            gmail_service.clear_credentials()
+            print(f"✅ Gmail service credentials cleared for user {user_id}")
+        
+        # Remove token.json file to prevent caching issues
+        token_path = 'token.json'
+        if os.path.exists(token_path):
+            os.remove(token_path)
+            print(f"✅ Gmail token file removed: {token_path}")
+        
+        # Remove Gmail token and email from database
+        if user_model:
+            user_model.update_gmail_token(user_id, None, None)
+            print(f"✅ Gmail token and email removed for user {user_id}")
+        
+        # Clear Gmail authentication from session
+        session.pop('gmail_authenticated', None)
+        print(f"✅ Gmail authentication cleared from session for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Gmail account disconnected successfully'
+        })
+    except Exception as e:
+        print(f"❌ Error disconnecting Gmail: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to disconnect Gmail: {str(e)}'
+        })
+
+# Helper to ensure session currency is set
+def ensure_session_currency():
+    """Ensure session currency is set for logged-in users"""
+    if session.get('user_id') and not session.get('user_currency'):
+        try:
+            # Try to get from database first
+            user_currency = currency_service.get_user_currency_preference(session['user_id'])
+            if not user_currency:
+                # Fallback to NGN for Paystack compatibility
+                user_currency = 'NGN'
+            session['user_currency'] = user_currency
+            print(f"🔍 [DEBUG] ensure_session_currency: Set to {user_currency}")
+        except Exception as e:
+            print(f"⚠️ [DEBUG] ensure_session_currency error: {e}")
+            session['user_currency'] = 'NGN'
+    elif not session.get('user_currency'):
+        # Set default for non-logged in users
+        session['user_currency'] = 'NGN'
+        print(f"🔍 [DEBUG] ensure_session_currency: Set default to NGN")
+
 # Payment routes
+@app.template_filter('thousands')
+def thousands_filter(value):
+    try:
+        return f"{int(value):,}"
+    except Exception:
+        return value
+
 @app.route('/payment/checkout')
 @login_required
 def payment_checkout():
+    ensure_session_currency()
     """Payment checkout page"""
     plan_name = request.args.get('plan', 'pro')
     billing_period = request.args.get('billing', 'monthly')
+    
+    # Debug logging
+    print(f"🔍 [DEBUG] Payment checkout - Plan: {plan_name}, Billing: {billing_period}")
+    print(f"🔍 [DEBUG] Session user_id: {session.get('user_id')}")
+    print(f"🔍 [DEBUG] Session user_currency: {session.get('user_currency')}")
     
     plan = plan_model.get_plan_by_name(plan_name) if plan_model else None
     if not plan:
         flash('Plan not found', 'error')
         return redirect(url_for('pricing'))
     
-    stripe_public_key = os.getenv('STRIPE_PUBLIC_KEY', '')
+    # Get user's currency preference
+    user_currency = session.get('user_currency', 'USD')
+    print(f"🔍 [DEBUG] Using currency: {user_currency}")
     
+    from currency_service import currency_service
+    # Convert plan to user's currency (same as pricing page)
+    converted_plan = currency_service.convert_plan_prices([plan], user_currency)[0]
+    price = converted_plan['price_monthly'] if billing_period == 'monthly' else converted_plan['price_yearly']
+    formatted_price = currency_service.format_price(price, user_currency)
+    
+    print(f"🔍 [DEBUG] Original plan price (USD): {plan.get('price_monthly' if billing_period == 'monthly' else 'price_yearly')}")
+    print(f"🔍 [DEBUG] Converted price: {price}")
+    print(f"🔍 [DEBUG] Formatted price: {formatted_price}")
+    print(f"🔍 [DEBUG] Currency symbol: {converted_plan['currency_symbol']}")
+    
+    paystack_public_key = os.getenv('PAYSTACK_PUBLIC_KEY', '')
     return render_template('payment/checkout.html', 
-                         plan=plan, 
+                         plan=converted_plan, 
                          billing_period=billing_period,
-                         stripe_public_key=stripe_public_key)
+                         paystack_public_key=paystack_public_key,
+                         user_currency=user_currency,
+                         formatted_price=formatted_price,
+                         converted_price=price,
+                         currency_symbol=converted_plan['currency_symbol'])
 
 @app.route('/payment/process', methods=['POST'])
 @login_required
 def payment_process():
-    """Process payment"""
+    ensure_session_currency()
+    """Process payment with Paystack"""
     try:
         data = request.get_json()
-        payment_method_id = data.get('payment_method_id')
         plan_name = data.get('plan')
-        billing_period = data.get('billing_period')
+        billing_period = data.get('billing_period', 'monthly')
         
         user_id = session.get('user_id')
         
-        # Create payment session
-        result = payment_service.create_one_time_payment_session(
-            user_id, plan_name, billing_period
+        # Get user's currency preference
+        user_currency = session.get('user_currency', 'USD')
+        print(f"🔍 [DEBUG] Using currency for Paystack: {user_currency}")
+        
+        # Always fallback to NGN for Paystack if not set or not supported
+        from currency_service import currency_service
+        if not currency_service.is_paystack_supported(user_currency):
+            print(f"⚠️ [DEBUG] Currency {user_currency} not supported by Paystack, forcing NGN")
+            user_currency = 'NGN'
+            session['user_currency'] = 'NGN'
+        
+        # Create Paystack checkout session
+        result = payment_service.create_checkout_session(
+            user_id, plan_name, billing_period, user_currency
         )
         
+        print(f"🔍 [DEBUG] Paystack result: {result}")
+        
         if result['success']:
-            # Confirm payment
-            import stripe
-            stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
-            
-            payment_intent = stripe.PaymentIntent.confirm(
-                result['payment_intent_id'],
-                payment_method=payment_method_id
-            )
-            
-            if payment_intent.status == 'succeeded':
-                # Update user subscription
-                user_model.update_subscription(user_id, plan_name)
-                session['subscription_plan'] = plan_name
-                
-                return jsonify({
-                    'success': True,
-                    'session_id': result['payment_intent_id']
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': 'Payment failed'
-                })
+            return jsonify({
+                'success': True,
+                'authorization_url': result['authorization_url'],
+                'reference': result['reference'],
+                'access_code': result['access_code'],
+                'amount': result.get('amount'),
+                'currency': result.get('currency')
+            })
         else:
             return jsonify(result)
             
     except Exception as e:
+        print(f"❌ [DEBUG] Payment process error: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -502,8 +663,49 @@ def payment_process():
 @login_required
 def payment_success():
     """Payment success page"""
-    session_id = request.args.get('session_id')
-    return render_template('payment/success.html', session_id=session_id)
+    reference = request.args.get('reference')
+    trxref = request.args.get('trxref')
+    
+    # Verify the transaction
+    if reference and trxref:
+        verification_result = payment_service.verify_paystack_transaction(reference)
+        if verification_result.get('status'):
+            # Transaction was successful
+            data = verification_result.get('data', {})
+            metadata = data.get('metadata', {})
+            
+            # Extract subscription details from metadata
+            user_id = metadata.get('user_id')
+            plan_name = metadata.get('plan_name')
+            billing_period = metadata.get('billing_period', 'monthly')
+            
+            # Activate subscription if we have the required data
+            if user_id and plan_name:
+                print(f"🔍 [DEBUG] Activating subscription - User: {user_id}, Plan: {plan_name}, Billing: {billing_period}")
+                success = payment_service.activate_subscription(
+                    user_id=user_id,
+                    plan_name=plan_name,
+                    payment_method='paystack',
+                    payment_id=reference,
+                    billing_period=billing_period
+                )
+                
+                if success and session.get('user_id') == user_id:
+                    user = user_model.get_user_by_id(user_id)
+                    session['subscription_plan'] = user.get('subscription_plan', 'free')
+                    session['subscription_status'] = user.get('subscription_status', 'inactive')
+                    session['subscription_expires'] = user.get('subscription_expires')
+                print(f"✅ [DEBUG] Subscription activated successfully for user {user_id}")
+                flash('Payment successful! Your subscription has been activated.', 'success')
+            else:
+                print(f"⚠️ [DEBUG] Missing metadata for subscription activation - User ID: {user_id}, Plan: {plan_name}")
+                flash('Payment successful!', 'success')
+            
+            return render_template('payment/success.html', 
+                                 reference=reference, 
+                                 transaction_data=data)
+    
+    return render_template('payment/success.html', reference=reference)
 
 @app.route('/payment/cancel')
 @login_required
@@ -511,115 +713,149 @@ def payment_cancel():
     """Payment cancel page"""
     return render_template('payment/cancel.html')
 
-@app.route('/payment/webhook', methods=['POST'])
-def payment_webhook():
-    """Stripe webhook handler"""
-    payload = request.get_data()
-    sig_header = request.headers.get('Stripe-Signature')
-    
-    result = payment_service.handle_webhook(payload, sig_header)
-    
-    if result['success']:
-        return jsonify({'status': 'success'}), 200
-    else:
-        return jsonify({'status': 'error', 'message': result['error']}), 400
-
-@app.route('/payment/crypto/checkout', methods=['GET', 'POST'])
-def crypto_checkout():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    if request.method == 'POST':
-        plan_name = request.form.get('plan')
-        billing_period = request.form.get('billing_period', 'monthly')  # Default to monthly
-        user_id = session['user_id']
+@app.route('/payment/verify/<reference>')
+@login_required
+def verify_payment_manual(reference):
+    """Manually verify and activate payment (for debugging/fixing failed webhooks)"""
+    try:
+        print(f"🔍 [DEBUG] Manual payment verification for reference: {reference}")
         
-        # Get plan details
-        plan = payment_service.plan_model.get_plan_by_name(plan_name)
-        if not plan:
-            flash('Invalid plan selected', 'error')
-            return redirect(url_for('pricing'))
+        # Verify the payment with Paystack
+        verification_result = payment_service.verify_paystack_transaction(reference)
         
-        # Determine the correct price based on billing period
-        if billing_period == 'yearly':
-            amount_usd = plan['price_yearly']
+        if verification_result.get('status') and verification_result['data']['status'] == 'success':
+            data = verification_result['data']
+            metadata = data.get('metadata', {})
+            
+            user_id = metadata.get('user_id')
+            plan_name = metadata.get('plan_name')
+            billing_period = metadata.get('billing_period', 'monthly')
+            payment_currency = metadata.get('currency', 'NGN')
+            
+            print(f"🔍 [DEBUG] Payment verified - User: {user_id}, Plan: {plan_name}")
+            
+            if user_id and plan_name:
+                # Check if already processed
+                existing_payment = payment_service.payment_model.get_payment_by_reference(reference)
+                if existing_payment:
+                    flash('Payment already processed!', 'info')
+                    return redirect(url_for('account_subscription'))
+                
+                # Activate subscription
+                success = payment_service.activate_subscription(
+                    user_id, 
+                    plan_name, 
+                    payment_method='paystack',
+                    payment_id=reference,
+                    billing_period=billing_period,
+                    currency=payment_currency
+                )
+                
+                if success and session.get('user_id') == user_id:
+                    user = user_model.get_user_by_id(user_id)
+                    session['subscription_plan'] = user.get('subscription_plan', 'free')
+                    session['subscription_status'] = user.get('subscription_status', 'inactive')
+                    session['subscription_expires'] = user.get('subscription_expires')
+                flash('Payment verified and subscription activated successfully!', 'success')
+                return redirect(url_for('account_subscription'))
+            else:
+                flash('Invalid payment metadata. Please contact support.', 'error')
+                return redirect(url_for('account_subscription'))
         else:
-            amount_usd = plan['price_monthly']
-        
-        # Create crypto payment session
-        payment_session = payment_service.create_crypto_payment_session(
-            amount_usd=amount_usd,
-            user_id=user_id,
-            plan_type=plan_name,
-            billing_period=billing_period
-        )
-        
-        if 'error' in payment_session:
-            flash(f'Error creating payment session: {payment_session["error"]}', 'error')
-            return redirect(url_for('pricing'))
-        
-        # Store payment session in session for verification
-        session['crypto_payment_session'] = payment_session
-        
-        return render_template('payment/crypto_checkout.html', 
-                             payment_session=payment_session,
-                             plan=plan,
-                             billing_period=billing_period)
-    
-    return redirect(url_for('pricing'))
+            flash('Payment verification failed. Please try again or contact support.', 'error')
+            return redirect(url_for('account_subscription'))
+            
+    except Exception as e:
+        print(f"❌ [DEBUG] Manual verification error: {e}")
+        flash('Error verifying payment. Please contact support.', 'error')
+        return redirect(url_for('account_subscription'))
 
-@app.route('/payment/crypto/verify', methods=['POST'])
-def verify_crypto_payment():
-    if 'user_id' not in session or 'crypto_payment_session' not in session:
-        return jsonify({'success': False, 'error': 'No active payment session'})
-    
-    user_wallet_address = request.form.get('wallet_address')
-    if not user_wallet_address:
-        return jsonify({'success': False, 'error': 'Wallet address required'})
-    
-    payment_session = session['crypto_payment_session']
-    
-    # Verify the payment
-    verification_result = payment_service.verify_usdt_payment(
-        payment_session, 
-        user_wallet_address
-    )
-    
-    if 'error' in verification_result:
-        return jsonify({'success': False, 'error': verification_result['error']})
-    
-    if verification_result.get('verified'):
-        # Process successful payment
-        user_id = session['user_id']
-        plan_name = payment_session['plan_type']
+# Admin endpoints for payment management
+@app.route('/admin/retry-failed-payments')
+def admin_retry_failed_payments():
+    """Admin endpoint to retry failed payments"""
+    try:
+        print("🔧 Admin: Retrying failed payments...")
         
-        # Update user subscription
-        success = payment_service.activate_subscription(
-            user_id, 
-            plan_name, 
-            payment_method='crypto',
-            payment_id=payment_session['payment_id'],
-            billing_period=payment_session.get('billing_period', 'monthly')
-        )
+        # Retry failed payments
+        success_count = payment_service.retry_failed_payments()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Retry complete: {success_count} payments fixed',
+            'fixed_count': success_count
+        })
+        
+    except Exception as e:
+        print(f"❌ Admin retry error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/verify-payment/<reference>')
+def admin_verify_payment(reference):
+    """Admin endpoint to verify and fix a specific payment"""
+    try:
+        print(f"🔧 Admin: Verifying payment {reference}...")
+        
+        # Verify and fix payment
+        success = payment_service.verify_and_fix_payment(reference)
         
         if success:
-            # Clear payment session
-            session.pop('crypto_payment_session', None)
             return jsonify({
-                'success': True, 
-                'message': 'Payment verified and subscription activated!',
-                'redirect': url_for('dashboard')
+                'success': True,
+                'message': f'Payment {reference} verified and fixed successfully'
             })
         else:
-            return jsonify({'success': False, 'error': 'Failed to activate subscription'})
-    
-    return jsonify({'success': False, 'error': 'Payment verification failed'})
+            return jsonify({
+                'success': False,
+                'error': f'Failed to verify and fix payment {reference}'
+            }), 400
+        
+    except Exception as e:
+        print(f"❌ Admin verification error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/payment/methods')
-def get_payment_methods():
-    """Get available payment methods"""
-    methods = payment_service.get_payment_methods()
-    return jsonify({'methods': methods})
+@app.route('/admin/payment-status')
+def admin_payment_status():
+    """Admin endpoint to check payment and subscription status"""
+    try:
+        # Get all users with their payment status
+        conn = payment_service.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT u.id, u.email, u.subscription_plan, u.subscription_status, u.subscription_expires,
+                   COUNT(pr.id) as payment_count,
+                   MAX(pr.created_at) as last_payment_date,
+                   MAX(CASE WHEN pr.status = 'completed' THEN pr.plan_name END) as last_completed_plan
+            FROM users u
+            LEFT JOIN payment_records pr ON u.id = pr.user_id
+            GROUP BY u.id, u.email, u.subscription_plan, u.subscription_status, u.subscription_expires
+            ORDER BY u.id
+        ''')
+        
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'id': row[0],
+                'email': row[1],
+                'subscription_plan': row[2],
+                'subscription_status': row[3],
+                'subscription_expires': row[4],
+                'payment_count': row[5],
+                'last_payment_date': row[6],
+                'last_completed_plan': row[7]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'users': users
+        })
+        
+    except Exception as e:
+        print(f"❌ Admin status error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # User account routes
 @app.route('/account')
@@ -627,21 +863,56 @@ def get_payment_methods():
 def account():
     """User account page"""
     user_id = session.get('user_id')
+    # Always fetch the latest user data from the database
     user = user_model.get_user_by_id(user_id) if user_model else None
     payments = payment_model.get_user_payments(user_id) if payment_model else []
+    user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
+    currency_symbol = currency_service.get_currency_symbol(user_currency)
+    
+    # Format payment amounts in local currency for account overview
+    for payment in payments:
+        payment['formatted_amount'] = currency_service.format_amount(payment['amount'], payment.get('currency', user_currency))
+        payment['currency_symbol'] = currency_service.get_currency_symbol(payment.get('currency', user_currency))
+        payment['payment_method'] = payment.get('payment_method') or 'Credit Card'
+        payment['description'] = f"{payment.get('plan_name', 'Subscription')} ({payment.get('billing_period', '').capitalize()})"
+    
+    # Format user dates
+    if user:
+        # Format created_at (member since)
+        if user.get('created_at'):
+            try:
+                created_date = datetime.fromisoformat(user['created_at'].replace('Z', '+00:00'))
+                user['formatted_created_at'] = created_date.strftime('%B %d, %Y')
+            except:
+                user['formatted_created_at'] = user['created_at']
+        else:
+            user['formatted_created_at'] = 'Unknown'
+        
+        # Format last_login
+        if user.get('last_login'):
+            try:
+                last_login_date = datetime.fromisoformat(user['last_login'].replace('Z', '+00:00'))
+                user['formatted_last_login'] = last_login_date.strftime('%B %d, %Y at %I:%M %p')
+            except:
+                user['formatted_last_login'] = user['last_login']
+        else:
+            user['formatted_last_login'] = 'Never'
     
     # Get Gmail profile information if Gmail is connected
     gmail_profile = None
-    if user:
+    if user and user.get('gmail_email'):
         gmail_token = user_model.get_gmail_token(user_id) if user_model else None
         if gmail_token:
             try:
+                if gmail_service:
+                    gmail_service.clear_credentials()
                 gmail_service.set_credentials_from_token(gmail_token)
                 if gmail_service.is_authenticated():
                     gmail_profile = gmail_service.get_user_profile()
             except Exception as e:
                 print(f"Error getting Gmail profile: {e}")
     
+    # Pass the up-to-date user object to the template
     return render_template('account.html', user=user, payments=payments, gmail_profile=gmail_profile)
 
 @app.route('/account/subscription')
@@ -650,9 +921,25 @@ def account_subscription():
     """Subscription management page"""
     user_id = session.get('user_id')
     user = user_model.get_user_by_id(user_id) if user_model else None
+    if user:
+        session['subscription_plan'] = user.get('subscription_plan', 'free')
+        session['subscription_status'] = user.get('subscription_status', 'inactive')
+        session['subscription_expires'] = user.get('subscription_expires')
     plans = plan_model.get_all_plans() if plan_model else []
     
-    return render_template('account/subscription.html', user=user, plans=plans)
+    # Get user's currency
+    user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
+    currency_symbol = currency_service.get_currency_symbol(user_currency)
+    # Get plan price in user's currency
+    for plan in plans:
+        plan['price_local'] = currency_service.convert_and_format(plan['price_monthly'], 'USD', user_currency)
+        plan['currency_symbol'] = currency_symbol
+    # Get user's quota for usage display
+    plan_quota = None
+    if user and user.get('subscription_plan'):
+        user_plan = plan_model.get_plan_by_name(user['subscription_plan'])
+        plan_quota = user_plan['email_limit'] if user_plan else None
+    return render_template('account/subscription.html', user=user, plans=plans, user_currency=user_currency, currency_symbol=currency_symbol, plan_quota=plan_quota)
 
 @app.route('/account/billing')
 @login_required
@@ -660,8 +947,50 @@ def account_billing():
     """Billing history page"""
     user_id = session.get('user_id')
     payments = payment_model.get_user_payments(user_id) if payment_model else []
-    
+    # For each payment, use the actual paid currency and amount
+    for payment in payments:
+        payment_currency = payment.get('currency', 'USD')
+        payment['formatted_amount'] = currency_service.format_amount(payment['amount'], payment_currency)
+        payment['currency_symbol'] = currency_service.get_currency_symbol(payment_currency)
+        payment['payment_method'] = payment.get('payment_method') or 'Credit Card'
+        payment['description'] = f"{payment.get('plan_name', 'Subscription')} ({payment.get('billing_period', '').capitalize()})"
     return render_template('account/billing.html', payments=payments)
+
+# Currency API routes
+@app.route('/api/update-currency', methods=['POST'])
+def update_currency():
+    """Update user's currency preference"""
+    try:
+        data = request.get_json()
+        currency = data.get('currency')
+        
+        print(f"🔍 [DEBUG] update_currency - Request data: {data}")
+        print(f"🔍 [DEBUG] Currency requested: {currency}")
+        print(f"🔍 [DEBUG] User ID in session: {session.get('user_id')}")
+        
+        if not currency:
+            print(f"❌ [DEBUG] Currency not provided")
+            return jsonify({'success': False, 'error': 'Currency not provided'})
+        
+        # Validate currency
+        if currency not in currency_service.supported_currencies:
+            print(f"❌ [DEBUG] Unsupported currency: {currency}")
+            return jsonify({'success': False, 'error': 'Unsupported currency'})
+        
+        # Save user's currency preference if logged in
+        if session.get('user_id'):
+            print(f"🔍 [DEBUG] Saving currency preference for user {session['user_id']}: {currency}")
+            currency_service.save_user_currency_preference(session['user_id'], currency)
+        
+        # Store currency in session for immediate use
+        session['user_currency'] = currency
+        print(f"🔍 [DEBUG] Currency saved to session: {currency}")
+        
+        return jsonify({'success': True, 'currency': currency})
+        
+    except Exception as e:
+        print(f"❌ [DEBUG] Error updating currency: {e}")
+        return jsonify({'success': False, 'error': 'Failed to update currency'})
 
 # API routes with usage tracking
 @app.route('/api/emails')
@@ -744,6 +1073,7 @@ def api_summary():
 
 @app.route('/api/analyze-email', methods=['POST'])
 @login_required
+@subscription_required('pro')  # Advanced AI analysis requires Pro subscription
 def api_analyze_email():
     """API endpoint to analyze a single email with attachments"""
     user_id = session.get('user_id')
@@ -850,6 +1180,7 @@ def api_analyze_email():
 
 @app.route('/api/process-emails')
 @login_required
+@subscription_required('pro')  # Advanced email processing requires Pro subscription
 def api_process_emails():
     """API endpoint to process emails with AI analysis (called asynchronously)"""
     user_id = session.get('user_id')
@@ -954,6 +1285,559 @@ def api_process_emails():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Pro-only features
+@app.route('/api/pro/document-analysis', methods=['POST'])
+@login_required
+@subscription_required('pro')  # Document analysis requires Pro subscription
+def api_document_analysis():
+    """Pro feature: Advanced document processing and analysis"""
+    user_id = session.get('user_id')
+    
+    # Check Gmail authentication
+    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    if not gmail_token:
+        return jsonify({'error': 'Gmail not connected'}), 401
+    
+    try:
+        data = request.get_json()
+        email_id = data.get('email_id')
+        
+        if not email_id:
+            return jsonify({'error': 'Email ID is required'}), 400
+        
+        # Set Gmail token
+        gmail_service.set_credentials_from_token(gmail_token)
+        
+        if not gmail_service.is_authenticated():
+            return jsonify({'error': 'Gmail authentication expired'}), 401
+        
+        # Get email with attachments
+        service = gmail_service._get_service()
+        email_data = service.users().messages().get(
+            userId='me',
+            id=email_id,
+            format='full'
+        ).execute()
+        
+        parsed_email = gmail_service._parse_email(email_data)
+        if not parsed_email:
+            return jsonify({'error': 'Email not found'}), 404
+        
+        # Process attachments if available
+        document_analysis = {
+            'attachments_found': 0,
+            'documents_processed': 0,
+            'analysis_results': [],
+            'key_insights': [],
+            'errors': []
+        }
+        
+        if parsed_email.get('has_attachments') and parsed_email.get('attachments'):
+            document_analysis['attachments_found'] = len(parsed_email['attachments'])
+            
+            for attachment in parsed_email['attachments']:
+                try:
+                    # Get attachment content
+                    attachment_data = gmail_service.get_attachment_content(email_id, attachment['id'])
+                    
+                    if attachment_data and document_processor:
+                        # Extract text from document
+                        doc_result = document_processor.extract_document_text(
+                            attachment_data, 
+                            attachment['mime_type'], 
+                            attachment['filename']
+                        )
+                        
+                        if doc_result['success'] and doc_result['text']:
+                            document_analysis['documents_processed'] += 1
+                            
+                            # Analyze document content
+                            doc_analysis = document_processor.analyze_document_content(
+                                doc_result['text'], 
+                                attachment['filename']
+                            )
+                            
+                            # Generate AI insights for the document
+                            if ai_service and doc_analysis['success']:
+                                doc_prompt = f"""
+                                Analyze this document content and provide insights:
+                                
+                                Document: {attachment['filename']}
+                                Type: {doc_analysis['document_type']}
+                                Content: {doc_result['text'][:1000]}...
+                                
+                                Please provide:
+                                1. Key information extracted
+                                2. Important points and highlights
+                                3. Action items or next steps
+                                4. Risk assessment (if applicable)
+                                5. Recommendations
+                                """
+                                
+                                try:
+                                    ai_insights = ai_service.analyze_text(doc_prompt)
+                                    doc_analysis['ai_insights'] = ai_insights
+                                except Exception as e:
+                                    doc_analysis['ai_insights'] = f"Unable to generate AI insights: {str(e)}"
+                            
+                            document_analysis['analysis_results'].append({
+                                'filename': attachment['filename'],
+                                'mime_type': attachment['mime_type'],
+                                'extraction_result': doc_result,
+                                'content_analysis': doc_analysis
+                            })
+                            
+                            # Add key points to overall insights
+                            if doc_analysis.get('key_points'):
+                                document_analysis['key_insights'].extend(doc_analysis['key_points'])
+                        else:
+                            document_analysis['errors'].append(
+                                f"Failed to extract text from {attachment['filename']}: {doc_result.get('error', 'Unknown error')}"
+                            )
+                    else:
+                        document_analysis['errors'].append(
+                            f"Failed to retrieve attachment content for {attachment['filename']}"
+                        )
+                        
+                except Exception as e:
+                    document_analysis['errors'].append(
+                        f"Error processing {attachment.get('filename', 'unknown')}: {str(e)}"
+                    )
+        
+        return jsonify({
+            'success': True,
+            'document_analysis': document_analysis,
+            'feature': 'pro_document_analysis'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Document analysis failed: {str(e)}'}), 500
+
+@app.route('/api/pro/enhanced-email-analysis', methods=['POST'])
+@login_required
+@subscription_required('pro')  # Enhanced email analysis requires Pro subscription
+def api_enhanced_email_analysis():
+    """Pro feature: Enhanced email analysis with deeper insights"""
+    user_id = session.get('user_id')
+    
+    # Check Gmail authentication
+    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    if not gmail_token:
+        return jsonify({'error': 'Gmail not connected'}), 401
+    
+    try:
+        data = request.get_json()
+        email_id = data.get('email_id')
+        analysis_depth = data.get('depth', 'comprehensive')  # basic, detailed, comprehensive
+        
+        if not email_id:
+            return jsonify({'error': 'Email ID is required'}), 400
+        
+        # Set Gmail token
+        gmail_service.set_credentials_from_token(gmail_token)
+        
+        if not gmail_service.is_authenticated():
+            return jsonify({'error': 'Gmail authentication expired'}), 401
+        
+        # Get email data
+        service = gmail_service._get_service()
+        email_data = service.users().messages().get(
+            userId='me',
+            id=email_id,
+            format='full'
+        ).execute()
+        
+        parsed_email = gmail_service._parse_email(email_data)
+        if not parsed_email:
+            return jsonify({'error': 'Email not found'}), 404
+        
+        # Enhanced analysis
+        enhanced_analysis = {
+            'email_metadata': {
+                'subject': parsed_email.get('subject', ''),
+                'sender': parsed_email.get('sender', ''),
+                'date': str(parsed_email.get('date', '')),
+                'priority': parsed_email.get('priority', 'normal'),
+                'has_attachments': parsed_email.get('has_attachments', False)
+            },
+            'content_analysis': {
+                'word_count': len(parsed_email.get('body', '').split()),
+                'sentiment': 'neutral',
+                'urgency_level': 'normal',
+                'complexity_score': 0,
+                'key_topics': [],
+                'entities_mentioned': []
+            },
+            'ai_insights': {
+                'summary': '',
+                'action_items': [],
+                'recommendations': [],
+                'context_analysis': '',
+                'response_suggestions': []
+            },
+            'business_insights': {
+                'meeting_requests': [],
+                'deadlines': [],
+                'follow_ups': [],
+                'decisions_needed': []
+            }
+        }
+        
+        # Analyze email content
+        email_content = parsed_email.get('body', '')
+        subject = parsed_email.get('subject', '')
+        sender = parsed_email.get('sender', '')
+        
+        # Basic content analysis
+        content_lower = email_content.lower()
+        subject_lower = subject.lower()
+        
+        # Detect urgency
+        urgency_keywords = ['urgent', 'asap', 'emergency', 'deadline', 'important']
+        urgency_score = sum(1 for keyword in urgency_keywords if keyword in subject_lower or keyword in content_lower)
+        if urgency_score >= 2:
+            enhanced_analysis['content_analysis']['urgency_level'] = 'high'
+        elif urgency_score >= 1:
+            enhanced_analysis['content_analysis']['urgency_level'] = 'medium'
+        
+        # Detect sentiment
+        positive_words = ['great', 'excellent', 'good', 'pleased', 'happy', 'successful']
+        negative_words = ['problem', 'issue', 'concern', 'disappointed', 'frustrated', 'urgent']
+        
+        positive_count = sum(1 for word in positive_words if word in content_lower)
+        negative_count = sum(1 for word in negative_words if word in content_lower)
+        
+        if positive_count > negative_count:
+            enhanced_analysis['content_analysis']['sentiment'] = 'positive'
+        elif negative_count > positive_count:
+            enhanced_analysis['content_analysis']['sentiment'] = 'negative'
+        
+        # Calculate complexity score
+        sentences = email_content.count('.') + email_content.count('!') + email_content.count('?')
+        questions = content_lower.count('?')
+        technical_terms = sum(1 for term in ['api', 'database', 'server', 'code', 'bug', 'feature'] if term in content_lower)
+        
+        enhanced_analysis['content_analysis']['complexity_score'] = (
+            len(email_content) * 0.1 + sentences * 5 + questions * 10 + technical_terms * 15
+        )
+        
+        # Generate AI insights
+        if ai_service:
+            enhanced_prompt = f"""
+            Provide comprehensive analysis for this email:
+            
+            Subject: {subject}
+            From: {sender}
+            Content: {email_content}
+            
+            Please provide:
+            1. **Executive Summary**: Brief overview of the email's purpose and importance
+            2. **Key Action Items**: Specific tasks or actions required
+            3. **Context Analysis**: Background and context of the communication
+            4. **Response Recommendations**: Suggested response approaches
+            5. **Business Impact**: Potential impact on business or projects
+            6. **Follow-up Actions**: Recommended next steps
+            7. **Risk Assessment**: Any potential issues or concerns
+            8. **Opportunities**: Potential opportunities or positive outcomes
+            
+            Format your response in clear sections with bullet points where appropriate.
+            """
+            
+            try:
+                ai_analysis = ai_service.analyze_text(enhanced_prompt)
+                enhanced_analysis['ai_insights']['summary'] = ai_analysis
+                
+                # Extract specific insights
+                if 'action items' in ai_analysis.lower():
+                    enhanced_analysis['ai_insights']['action_items'] = [
+                        line.strip() for line in ai_analysis.split('\n') 
+                        if any(keyword in line.lower() for keyword in ['action', 'task', 'do', 'complete', 'follow'])
+                    ]
+                
+                if 'recommendation' in ai_analysis.lower():
+                    enhanced_analysis['ai_insights']['recommendations'] = [
+                        line.strip() for line in ai_analysis.split('\n') 
+                        if any(keyword in line.lower() for keyword in ['recommend', 'suggest', 'should', 'could'])
+                    ]
+                    
+            except Exception as e:
+                enhanced_analysis['ai_insights']['summary'] = f"Unable to generate AI analysis: {str(e)}"
+        
+        return jsonify({
+            'success': True,
+            'enhanced_analysis': enhanced_analysis,
+            'feature': 'pro_enhanced_email_analysis'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Enhanced analysis failed: {str(e)}'}), 500
+
+# Enterprise-only features
+@app.route('/api/enterprise/team-analytics')
+@login_required
+@subscription_required('enterprise')  # Team analytics requires Enterprise subscription
+def api_team_analytics():
+    """Enterprise feature: Team collaboration analytics"""
+    user_id = session.get('user_id')
+    
+    # Check Gmail authentication
+    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    if not gmail_token:
+        return jsonify({'error': 'Gmail not connected'}), 401
+    
+    try:
+        # Set Gmail token
+        gmail_service.set_credentials_from_token(gmail_token)
+        
+        if not gmail_service.is_authenticated():
+            return jsonify({'error': 'Gmail authentication expired'}), 401
+        
+        # Get team emails (emails from colleagues/team members)
+        team_emails = gmail_service.get_todays_emails(max_results=50)
+        
+        # Analyze team communication patterns
+        team_analysis = {
+            'total_team_emails': len(team_emails),
+            'team_members': [],
+            'communication_patterns': {},
+            'project_insights': [],
+            'collaboration_metrics': {}
+        }
+        
+        # Extract team members and analyze communication
+        team_members = set()
+        for email in team_emails:
+            sender = email.get('sender', '')
+            if sender:
+                team_members.add(sender)
+                
+                # Analyze communication patterns
+                if sender not in team_analysis['communication_patterns']:
+                    team_analysis['communication_patterns'][sender] = {
+                        'email_count': 0,
+                        'response_time': [],
+                        'topics': []
+                    }
+                team_analysis['communication_patterns'][sender]['email_count'] += 1
+        
+        team_analysis['team_members'] = list(team_members)
+        
+        # Generate team insights using AI
+        if ai_service and team_emails:
+            team_content = "\n".join([f"From: {e.get('sender', '')}\nSubject: {e.get('subject', '')}\nBody: {e.get('body', '')[:200]}..." for e in team_emails[:10]])
+            
+            team_prompt = f"""
+            Analyze this team communication data and provide insights:
+            
+            {team_content}
+            
+            Please provide:
+            1. Team communication patterns
+            2. Key projects or topics being discussed
+            3. Collaboration opportunities
+            4. Potential bottlenecks or issues
+            5. Recommendations for improved team communication
+            
+            Format as a structured analysis with clear sections.
+            """
+            
+            try:
+                team_insights = ai_service.analyze_text(team_prompt)
+                team_analysis['ai_insights'] = team_insights
+            except Exception as e:
+                team_analysis['ai_insights'] = f"Unable to generate AI insights: {str(e)}"
+        
+        return jsonify({
+            'success': True,
+            'team_analytics': team_analysis,
+            'feature': 'enterprise_team_analytics'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Team analytics failed: {str(e)}'}), 500
+
+@app.route('/api/pro/custom-insights', methods=['POST'])
+@login_required
+@subscription_required('pro')  # Custom insights require Pro subscription
+def api_custom_insights():
+    """Pro feature: Custom AI insights based on user-defined criteria"""
+    user_id = session.get('user_id')
+    
+    # Check Gmail authentication
+    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    if not gmail_token:
+        return jsonify({'error': 'Gmail not connected'}), 401
+    
+    try:
+        data = request.get_json()
+        insight_type = data.get('type', 'general')
+        custom_criteria = data.get('criteria', '')
+        email_count = data.get('email_count', 20)
+        
+        # Set Gmail token
+        gmail_service.set_credentials_from_token(gmail_token)
+        
+        if not gmail_service.is_authenticated():
+            return jsonify({'error': 'Gmail authentication expired'}), 401
+        
+        # Get emails based on custom criteria
+        all_emails = gmail_service.get_todays_emails(max_results=email_count)
+        
+        # Filter emails based on custom criteria
+        filtered_emails = []
+        for email in all_emails:
+            email_content = f"{email.get('subject', '')} {email.get('body', '')}".lower()
+            if any(criterion.lower() in email_content for criterion in custom_criteria.split(',')):
+                filtered_emails.append(email)
+        
+        # Generate custom insights using AI
+        if ai_service and filtered_emails:
+            email_content = "\n\n".join([
+                f"From: {e.get('sender', '')}\nSubject: {e.get('subject', '')}\nBody: {e.get('body', '')[:300]}..."
+                for e in filtered_emails[:10]
+            ])
+            
+            custom_prompt = f"""
+            Generate custom insights based on the following criteria: {custom_criteria}
+            
+            Email data:
+            {email_content}
+            
+            Please provide:
+            1. Key insights related to the specified criteria
+            2. Patterns and trends
+            3. Actionable recommendations
+            4. Risk assessment (if applicable)
+            5. Opportunities identified
+            
+            Focus specifically on the criteria: {custom_criteria}
+            """
+            
+            try:
+                custom_analysis = ai_service.analyze_text(custom_prompt)
+                return jsonify({
+                    'success': True,
+                    'custom_insights': custom_analysis,
+                    'emails_analyzed': len(filtered_emails),
+                    'criteria_used': custom_criteria,
+                    'feature': 'pro_custom_insights'
+                })
+            except Exception as e:
+                return jsonify({'error': f'Custom analysis failed: {str(e)}'}), 500
+        else:
+            return jsonify({'error': 'No emails found matching criteria'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': f'Custom insights failed: {str(e)}'}), 500
+
+@app.route('/api/enterprise/advanced-analytics')
+@login_required
+@subscription_required('enterprise')  # Advanced analytics require Enterprise subscription
+def api_advanced_analytics():
+    """Enterprise feature: Advanced email analytics and reporting"""
+    user_id = session.get('user_id')
+    
+    # Check Gmail authentication
+    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    if not gmail_token:
+        return jsonify({'error': 'Gmail not connected'}), 401
+    
+    try:
+        # Set Gmail token
+        gmail_service.set_credentials_from_token(gmail_token)
+        
+        if not gmail_service.is_authenticated():
+            return jsonify({'error': 'Gmail authentication expired'}), 401
+        
+        # Get comprehensive email data
+        all_emails = gmail_service.get_todays_emails(max_results=100)
+        
+        # Advanced analytics
+        analytics = {
+            'email_volume': {
+                'total_emails': len(all_emails),
+                'emails_by_hour': {},
+                'emails_by_sender': {},
+                'emails_by_type': {}
+            },
+            'communication_patterns': {
+                'response_times': [],
+                'thread_lengths': [],
+                'engagement_metrics': {}
+            },
+            'content_analysis': {
+                'topics': [],
+                'sentiment': {},
+                'urgency_levels': {}
+            },
+            'productivity_insights': {
+                'action_items': [],
+                'deadlines': [],
+                'follow_ups': []
+            }
+        }
+        
+        # Analyze email patterns
+        for email in all_emails:
+            # Time-based analysis
+            email_date = email.get('date')
+            if email_date:
+                hour = email_date.hour if hasattr(email_date, 'hour') else 0
+                analytics['email_volume']['emails_by_hour'][hour] = analytics['email_volume']['emails_by_hour'].get(hour, 0) + 1
+            
+            # Sender analysis
+            sender = email.get('sender', '')
+            if sender:
+                analytics['email_volume']['emails_by_sender'][sender] = analytics['email_volume']['emails_by_sender'].get(sender, 0) + 1
+            
+            # Content analysis
+            subject = email.get('subject', '').lower()
+            body = email.get('body', '').lower()
+            
+            # Detect urgency
+            urgency_keywords = ['urgent', 'asap', 'emergency', 'deadline', 'important']
+            urgency_score = sum(1 for keyword in urgency_keywords if keyword in subject or keyword in body)
+            if urgency_score > 0:
+                analytics['content_analysis']['urgency_levels'][email.get('id')] = urgency_score
+        
+        # Generate AI-powered insights
+        if ai_service and all_emails:
+            email_summary = "\n".join([
+                f"From: {e.get('sender', '')} | Subject: {e.get('subject', '')} | Date: {e.get('date', '')}"
+                for e in all_emails[:20]
+            ])
+            
+            analytics_prompt = f"""
+            Provide advanced analytics insights for this email data:
+            
+            {email_summary}
+            
+            Please analyze:
+            1. Communication efficiency patterns
+            2. Productivity bottlenecks
+            3. Time management insights
+            4. Priority management recommendations
+            5. Workflow optimization suggestions
+            6. Risk assessment for missed communications
+            
+            Provide actionable insights and specific recommendations.
+            """
+            
+            try:
+                ai_insights = ai_service.analyze_text(analytics_prompt)
+                analytics['ai_insights'] = ai_insights
+            except Exception as e:
+                analytics['ai_insights'] = f"Unable to generate AI insights: {str(e)}"
+        
+        return jsonify({
+            'success': True,
+            'advanced_analytics': analytics,
+            'feature': 'enterprise_advanced_analytics'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Advanced analytics failed: {str(e)}'}), 500
+
 # Legal pages
 @app.route('/terms')
 def terms():
@@ -962,8 +1846,24 @@ def terms():
 
 @app.route('/privacy')
 def privacy():
-    """Privacy Policy"""
-    return render_template('legal/privacy.html')
+    """Privacy policy page"""
+    return render_template('privacy.html')
+
+@app.route('/test-session')
+def test_session():
+    """Test session persistence"""
+    if 'test_key' not in session:
+        session['test_key'] = 'Session is working!'
+        msg = 'Session variable set. Reload to check persistence.'
+    else:
+        msg = f"Session variable value: {session['test_key']}"
+    return f'<h2>{msg}</h2>'
+
+@app.route('/features')
+def features():
+    """Features page showing all app features organized by plan"""
+    return render_template('features.html')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5004) 
+    port = int(os.environ.get('PORT', 5001))
+    app.run(debug=False, host='0.0.0.0', port=port) 

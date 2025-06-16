@@ -393,6 +393,45 @@ Format the summary in a clear, structured way."""
                     "email_count": len(emails)
                 }
 
+    def analyze_text(self, prompt: str, max_tokens: int = 1500) -> str:
+        """
+        Analyze arbitrary text prompt using hybrid AI model selection.
+        Returns the generated content as a string.
+        """
+        # Use complexity to select model (treat prompt as 'email_content')
+        complexity = self._calculate_complexity(prompt)
+        if complexity['is_complex'] and self.use_sonnet_for_complex:
+            model = self.models['claude_sonnet']
+            model_name = 'claude_sonnet'
+        elif not complexity['is_complex'] and self.use_haiku_for_simple:
+            model = self.models['claude_haiku']
+            model_name = 'claude_haiku'
+        else:
+            model = self.models['claude_sonnet']
+            model_name = 'claude_sonnet'
+
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
+        try:
+            response = self._call_claude_api(model, messages, max_tokens=max_tokens)
+            content = self._extract_response_content(response, 'claude')
+            print(f"✅ analyze_text generated using {model_name}")
+            return content
+        except Exception as e:
+            print(f"❌ Claude API failed for analyze_text: {str(e)}")
+            if self.fallback_to_openai:
+                try:
+                    response = self._call_openai_api(messages, max_tokens=max_tokens)
+                    content = self._extract_response_content(response, 'openai')
+                    print(f"✅ analyze_text generated using OpenAI fallback")
+                    return content
+                except Exception as fallback_error:
+                    print(f"❌ OpenAI fallback also failed: {str(fallback_error)}")
+                    raise Exception(f"All AI services failed for analyze_text: {str(e)}")
+            else:
+                raise e
+
 # Legacy OpenAI service for backward compatibility
 class AIService:
     """

@@ -27,6 +27,7 @@ class DatabaseManager:
                 last_login TIMESTAMP,
                 is_active BOOLEAN DEFAULT 1,
                 gmail_token TEXT,
+                gmail_email TEXT,
                 subscription_plan TEXT DEFAULT 'free',
                 subscription_status TEXT DEFAULT 'active',
                 subscription_expires TIMESTAMP,
@@ -62,6 +63,7 @@ class DatabaseManager:
                 status TEXT NOT NULL,
                 plan_name TEXT NOT NULL,
                 billing_period TEXT NOT NULL,
+                payment_method TEXT DEFAULT 'card',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
@@ -92,6 +94,21 @@ class DatabaseManager:
             )
         ''')
         
+        # User preferences table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                currency TEXT DEFAULT 'USD',
+                timezone TEXT DEFAULT 'UTC',
+                language TEXT DEFAULT 'en',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                UNIQUE(user_id)
+            )
+        ''')
+        
         # Insert default subscription plans
         cursor.execute('''
             INSERT OR IGNORE INTO subscription_plans 
@@ -119,14 +136,12 @@ class User:
         """Create a new user"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
-        
         try:
             password_hash = generate_password_hash(password)
             cursor.execute('''
-                INSERT INTO users (email, password_hash, first_name, last_name)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO users (email, password_hash, first_name, last_name, gmail_email)
+                VALUES (?, ?, ?, ?, NULL)
             ''', (email, password_hash, first_name, last_name))
-            
             user_id = cursor.lastrowid
             conn.commit()
             return user_id
@@ -177,7 +192,8 @@ class User:
         
         cursor.execute('''
             SELECT id, email, first_name, last_name, subscription_plan, 
-                   subscription_status, subscription_expires, api_usage_count, monthly_usage_limit
+                   subscription_status, subscription_expires, api_usage_count, monthly_usage_limit, gmail_email,
+                   created_at, last_login
             FROM users WHERE id = ? AND is_active = 1
         ''', (user_id,))
         
@@ -194,7 +210,10 @@ class User:
                 'subscription_status': user_data[5],
                 'subscription_expires': user_data[6],
                 'api_usage_count': user_data[7],
-                'monthly_usage_limit': user_data[8]
+                'monthly_usage_limit': user_data[8],
+                'gmail_email': user_data[9],
+                'created_at': user_data[10],
+                'last_login': user_data[11]
             }
         return None
     
@@ -205,7 +224,8 @@ class User:
         
         cursor.execute('''
             SELECT id, email, first_name, last_name, subscription_plan, 
-                   subscription_status, subscription_expires, api_usage_count, monthly_usage_limit
+                   subscription_status, subscription_expires, api_usage_count, monthly_usage_limit, gmail_email,
+                   created_at, last_login
             FROM users WHERE email = ? AND is_active = 1
         ''', (email,))
         
@@ -222,16 +242,21 @@ class User:
                 'subscription_status': user_data[5],
                 'subscription_expires': user_data[6],
                 'api_usage_count': user_data[7],
-                'monthly_usage_limit': user_data[8]
+                'monthly_usage_limit': user_data[8],
+                'gmail_email': user_data[9],
+                'created_at': user_data[10],
+                'last_login': user_data[11]
             }
         return None
     
-    def update_gmail_token(self, user_id, token_data):
-        """Update user's Gmail token"""
+    def update_gmail_token(self, user_id, token_data, gmail_email=None):
+        """Update user's Gmail token and optionally Gmail email address"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('UPDATE users SET gmail_token = ? WHERE id = ?', (token_data, user_id))
+        # Always update both fields - if gmail_email is None, it will clear the field
+        cursor.execute('UPDATE users SET gmail_token = ?, gmail_email = ? WHERE id = ?', (token_data, gmail_email, user_id))
+        
         conn.commit()
         conn.close()
     
@@ -246,20 +271,37 @@ class User:
         
         return result[0] if result else None
     
-    def update_subscription(self, user_id, plan_name, stripe_customer_id=None, expires_at=None):
-        """Update user's subscription"""
+    def get_gmail_email(self, user_id):
+        """Get user's linked Gmail email address"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            UPDATE users 
-            SET subscription_plan = ?, subscription_status = 'active', 
-                subscription_expires = ?, stripe_customer_id = ?
-            WHERE id = ?
-        ''', (plan_name, expires_at, stripe_customer_id, user_id))
-        
-        conn.commit()
+        cursor.execute('SELECT gmail_email FROM users WHERE id = ?', (user_id,))
+        result = cursor.fetchone()
         conn.close()
+        return result[0] if result else None
+    
+    def update_subscription(self, user_id, plan_name, stripe_customer_id=None, expires_at=None):
+        """Update user's subscription"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE users 
+                SET subscription_plan = ?, subscription_status = 'active', 
+                    subscription_expires = ?, stripe_customer_id = ?
+                WHERE id = ?
+            ''', (plan_name, expires_at, stripe_customer_id, user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            # Check if any rows were affected
+            return cursor.rowcount > 0
+            
+        except Exception as e:
+            print(f"❌ [DEBUG] Error in update_subscription: {e}")
+            return False
     
     def increment_usage(self, user_id, action_type, email_count=1):
         """Increment user's API usage"""
@@ -438,16 +480,16 @@ class PaymentRecord:
         self.db_manager = db_manager
     
     def create_payment_record(self, user_id, stripe_payment_intent_id, amount, 
-                            plan_name, billing_period, status='pending'):
+                            plan_name, billing_period, status='pending', currency='usd', payment_method='card'):
         """Create a new payment record"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
             INSERT INTO payment_records 
-            (user_id, stripe_payment_intent_id, amount, plan_name, billing_period, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, stripe_payment_intent_id, amount, plan_name, billing_period, status))
+            (user_id, stripe_payment_intent_id, amount, currency, plan_name, billing_period, status, payment_method)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, stripe_payment_intent_id, amount, currency, plan_name, billing_period, status, payment_method))
         
         payment_id = cursor.lastrowid
         conn.commit()
@@ -476,7 +518,7 @@ class PaymentRecord:
         
         cursor.execute('''
             SELECT id, stripe_payment_intent_id, amount, currency, status, 
-                   plan_name, billing_period, created_at
+                   plan_name, billing_period, payment_method, created_at
             FROM payment_records 
             WHERE user_id = ?
             ORDER BY created_at DESC
@@ -492,8 +534,70 @@ class PaymentRecord:
                 'status': row[4],
                 'plan_name': row[5],
                 'billing_period': row[6],
-                'created_at': row[7]
+                'payment_method': row[7],
+                'created_at': row[8]
             })
         
         conn.close()
-        return payments 
+        return payments
+
+    def get_payments_by_user(self, user_id):
+        """Get all payments for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, user_id, stripe_payment_intent_id, amount, currency, status, 
+                   plan_name, billing_period, payment_method, created_at
+            FROM payment_records 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC
+        ''', (user_id,))
+        
+        payments = []
+        for row in cursor.fetchall():
+            payments.append({
+                'id': row[0],
+                'user_id': row[1],
+                'stripe_payment_intent_id': row[2],
+                'amount': float(row[3]),
+                'currency': row[4],
+                'status': row[5],
+                'plan_name': row[6],
+                'billing_period': row[7],
+                'payment_method': row[8],
+                'created_at': row[9]
+            })
+        
+        conn.close()
+        return payments
+
+    def get_payment_by_reference(self, reference):
+        """Get payment by reference (payment ID)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, user_id, stripe_payment_intent_id, amount, currency, status, 
+                   plan_name, billing_period, payment_method, created_at
+            FROM payment_records 
+            WHERE stripe_payment_intent_id = ?
+        ''', (reference,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'id': row[0],
+                'user_id': row[1],
+                'stripe_payment_intent_id': row[2],
+                'amount': float(row[3]),
+                'currency': row[4],
+                'status': row[5],
+                'plan_name': row[6],
+                'billing_period': row[7],
+                'payment_method': row[8],
+                'created_at': row[9]
+            }
+        return None 
