@@ -1132,23 +1132,31 @@ function formatEmailContent(content) {
     
     console.log("🔍 Original content:", content.substring(0, 200) + "...");
     
-    // Step 1: Remove all HTML and CSS completely
+    // Step 1: Preserve important structural elements before cleaning
     let cleaned = content
-        // Remove style blocks completely (CSS)
+        // Preserve paragraph breaks and headers
+        .replace(/<\/?(h[1-6])[^>]*>/gi, '\n\n**$1**\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<p[^>]*>/gi, '\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<div[^>]*>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        
+        // Preserve links but clean them up
+        .replace(/<a[^>]*href\s*=\s*["']([^"']*)["'][^>]*>([^<]*)<\/a>/gi, '$2 [$1]')
+        
+        // Remove style blocks and scripts completely
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         
-        // Remove inline CSS styles
+        // Remove inline CSS and attributes
         .replace(/style\s*=\s*["'][^"']*["']/gi, '')
         .replace(/class\s*=\s*["'][^"']*["']/gi, '')
         .replace(/id\s*=\s*["'][^"']*["']/gi, '')
+        .replace(/width\s*=\s*["'][^"']*["']/gi, '')
+        .replace(/height\s*=\s*["'][^"']*["']/gi, '')
         
-        // Convert structural HTML to line breaks first
-        .replace(/<\/?(div|p|br|tr|td|th|table|tbody|thead|tfoot)[^>]*>/gi, '\n')
-        .replace(/<\/h[1-6][^>]*>/gi, '\n\n')
-        .replace(/<h[1-6][^>]*>/gi, '\n')
-        
-        // Remove ALL remaining HTML tags
+        // Remove all remaining HTML tags
         .replace(/<[^>]+>/g, '')
         
         // Decode HTML entities
@@ -1161,74 +1169,98 @@ function formatEmailContent(content) {
         .replace(/&hellip;/g, '...')
         .replace(/&mdash;/g, '—')
         .replace(/&ndash;/g, '–')
+        .replace(/&rsquo;/g, "'")
+        .replace(/&lsquo;/g, "'")
+        .replace(/&rdquo;/g, '"')
+        .replace(/&ldquo;/g, '"')
         
-        // Clean up whitespace and line breaks
-        .replace(/\s+/g, ' ')           // Multiple spaces to single space
-        .replace(/\n\s*/g, '\n')        // Remove spaces after line breaks
-        .replace(/\n{3,}/g, '\n\n')     // Multiple line breaks to double
+        // Clean up CSS remnants
+        .replace(/\b\w+\s*:\s*[^;]+;/g, '')
+        .replace(/\{[^}]*\}/g, '')
+        
+        // Clean up whitespace but preserve paragraph structure
+        .replace(/[ \t]+/g, ' ')  // Multiple spaces/tabs to single space
+        .replace(/\n[ \t]+/g, '\n')  // Remove spaces/tabs at start of lines
+        .replace(/[ \t]+\n/g, '\n')  // Remove spaces/tabs at end of lines
+        .replace(/\n{4,}/g, '\n\n\n')  // Max triple line breaks
         .trim();
+
+    console.log("🔍 After initial cleaning:", cleaned.substring(0, 200) + "...");
     
-    console.log("🔍 After HTML removal:", cleaned.substring(0, 200) + "...");
+    // Step 2: Parse and intelligently format the content
+    const paragraphs = cleaned.split(/\n{2,}/).filter(p => p.trim().length > 0);
+    const formattedParagraphs = [];
     
-    // Step 2: Parse and format the content intelligently
-    const lines = cleaned.split('\n').filter(line => line.trim().length > 0);
-    const formattedLines = [];
-    
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i].trim();
-        if (!line) continue;
+    for (let i = 0; i < paragraphs.length; i++) {
+        let paragraph = paragraphs[i].trim();
+        if (!paragraph) continue;
         
-        // Skip common CSS remnants or style fragments
-        if (line.match(/^(font-family|color|text-align|height|width|margin|padding|display)/i)) {
+        // Skip CSS remnants
+        if (paragraph.match(/^(font-family|color|text-align|height|width|margin|padding|display)/i)) {
             continue;
         }
         
-        // Skip time stamps that look like CSS
-        if (line.match(/^\d{1,2}:\d{2}:\d{2}\s+(AM|PM)$/)) {
-            // This is likely a timestamp, format it nicely
-            formattedLines.push(`<strong>Time:</strong> ${line}`);
+        // Format headers (lines that look like titles)
+        if (paragraph.length < 100 && 
+            (paragraph.match(/^[A-Z][^.!?]*$/) || 
+             paragraph.includes('**h') ||
+             (i === 0 && paragraph.length < 80))) {
+            formattedParagraphs.push(`<h6 class="text-primary fw-bold mb-2">${paragraph.replace(/\*\*h\d+\*\*/g, '')}</h6>`);
             continue;
         }
         
-        // Format key-value pairs (common in bank notifications)
-        if (line.includes(':') && line.split(':').length === 2) {
-            const [key, value] = line.split(':').map(part => part.trim());
+        // Format paragraphs with proper line breaks
+        const lines = paragraph.split('\n').filter(line => line.trim().length > 0);
+        const formattedLines = [];
+        
+        for (const line of lines) {
+            let formattedLine = line.trim();
             
-            // Check if this looks like a legitimate key-value pair
-            if (key.length < 50 && value.length > 0 && 
-                !key.match(/^(font-family|color|text-align|height|width)$/i)) {
-                formattedLines.push(`<strong>${key}:</strong> ${value}`);
-                continue;
+            // Format key-value pairs (like in bank notifications)
+            if (formattedLine.includes(':') && formattedLine.split(':').length === 2) {
+                const [key, value] = formattedLine.split(':').map(part => part.trim());
+                if (key.length < 50 && value.length > 0 && 
+                    !key.match(/^(font-family|color|text-align|https?)/i)) {
+                    formattedLines.push(`<strong>${key}:</strong> ${value}`);
+                    continue;
+                }
             }
+            
+            // Format currency amounts
+            formattedLine = formattedLine.replace(/\b(NGN|USD|EUR|GBP)\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/g, 
+                                               '<strong class="text-success">$1 $2</strong>');
+            
+            // Format account numbers (partially masked)
+            formattedLine = formattedLine.replace(/\*{4,}\d{4}/g, '<code class="bg-light px-1">$&</code>');
+            
+            // Format transaction references
+            formattedLine = formattedLine.replace(/\b\d{12,}\b/g, '<code class="bg-light px-1">$&</code>');
+            
+            // Bold important terms
+            formattedLine = formattedLine.replace(/\b(DEBIT|CREDIT|Account Number|Transaction|Amount|Balance|Reference|View this post|By |Author:)\b/gi, 
+                                               '<strong>$1</strong>');
+            
+            // Format URLs nicely
+            formattedLine = formattedLine.replace(/\[(https?:\/\/[^\]]+)\]/g, 
+                                               '<a href="$1" target="_blank" class="text-decoration-none"><i class="fas fa-external-link-alt me-1"></i>Link</a>');
+            
+            formattedLines.push(formattedLine);
         }
         
-        // Format currency amounts
-        line = line.replace(/\b(NGN|USD|EUR|GBP)\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/g, 
-                           '<strong>$1 $2</strong>');
+        // Join lines within paragraph with proper spacing
+        const paragraphContent = formattedLines.join('<br>');
         
-        // Format account numbers (partially masked)
-        line = line.replace(/\*{4,}\d{4}/g, '<code>$&</code>');
-        
-        // Format transaction references
-        line = line.replace(/\b\d{12,}\b/g, '<code>$&</code>');
-        
-        // Bold important terms
-        line = line.replace(/\b(DEBIT|CREDIT|Account Number|Transaction|Amount|Balance|Reference)\b/gi, 
-                           '<strong>$1</strong>');
-        
-        formattedLines.push(line);
+        if (paragraphContent.trim()) {
+            formattedParagraphs.push(`<p class="mb-3">${paragraphContent}</p>`);
+        }
     }
     
-    // Step 3: Join with proper spacing
-    let result = formattedLines.join('<br>');
+    // Step 3: Join paragraphs
+    let result = formattedParagraphs.join('\n');
     
-    // Step 4: Final cleanup - remove any remaining CSS-like content
-    result = result.replace(/\b\w+\s*:\s*[^;]+;/g, ''); // Remove any remaining CSS properties
-    result = result.replace(/\{\s*[^}]*\}/g, '');        // Remove any remaining CSS blocks
-    
-    // Step 5: Clean up extra spaces and line breaks
-    result = result.replace(/<br>\s*<br>/g, '<br><br>');  // Double line breaks
-    result = result.replace(/(<br>\s*){3,}/g, '<br><br>'); // Max double line breaks
+    // Step 4: Final cleanup
+    result = result.replace(/(<br>\s*){3,}/g, '<br><br>');  // Max double line breaks
+    result = result.replace(/<p class="mb-3">\s*<\/p>/g, '');  // Remove empty paragraphs
     
     console.log("🔍 Final formatted content:", result.substring(0, 200) + "...");
     

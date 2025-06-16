@@ -84,25 +84,36 @@ class EmailProcessor:
         return ''
     
     def _clean_email_body(self, body: str) -> str:
-        """Clean email body text - comprehensive HTML/CSS removal"""
+        """Clean email body text - comprehensive HTML/CSS removal while preserving structure"""
         if not body:
             return ''
         
-        # Step 1: Remove style blocks and scripts completely
+        # Step 1: Preserve important structural elements before cleaning
+        # Preserve headers with markers
+        body = re.sub(r'<(h[1-6])[^>]*>([^<]*)</h[1-6]>', r'\n\n**\1**\2**\1**\n\n', body, flags=re.IGNORECASE)
+        
+        # Preserve paragraph breaks
+        body = re.sub(r'</p>', '\n\n', body, flags=re.IGNORECASE)
+        body = re.sub(r'<p[^>]*>', '\n', body, flags=re.IGNORECASE)
+        
+        # Preserve line breaks and div structures
+        body = re.sub(r'</div>', '\n', body, flags=re.IGNORECASE)
+        body = re.sub(r'<div[^>]*>', '\n', body, flags=re.IGNORECASE)
+        body = re.sub(r'<br\s*/?>', '\n', body, flags=re.IGNORECASE)
+        
+        # Preserve links in readable format
+        body = re.sub(r'<a[^>]*href\s*=\s*["\']([^"\']*)["\'][^>]*>([^<]*)</a>', r'\2 [\1]', body, flags=re.IGNORECASE)
+        
+        # Step 2: Remove style blocks and scripts completely
         body = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', body, flags=re.IGNORECASE)
         body = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', body, flags=re.IGNORECASE)
         
-        # Step 2: Remove inline CSS and attributes
+        # Step 3: Remove inline CSS and attributes
         body = re.sub(r'style\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
         body = re.sub(r'class\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
         body = re.sub(r'id\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
         body = re.sub(r'width\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
         body = re.sub(r'height\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
-        
-        # Step 3: Convert structural HTML to line breaks first
-        body = re.sub(r'</?(?:div|p|br|tr|td|th|table|tbody|thead|tfoot)[^>]*>', '\n', body, flags=re.IGNORECASE)
-        body = re.sub(r'</h[1-6][^>]*>', '\n\n', body, flags=re.IGNORECASE)
-        body = re.sub(r'<h[1-6][^>]*>', '\n', body, flags=re.IGNORECASE)
         
         # Step 4: Remove all remaining HTML tags
         body = re.sub(r'<[^>]+>', '', body)
@@ -120,15 +131,13 @@ class EmailProcessor:
         body = re.sub(r'\b\w+\s*:\s*[^;]+;', '', body)  # Remove CSS properties
         body = re.sub(r'\{[^}]*\}', '', body)  # Remove CSS blocks
         
-        # Step 7: Remove time stamps that are likely CSS remnants
-        body = re.sub(r'^\d{1,2}:\d{2}:\d{2}\s+(AM|PM)\s*$', '', body, flags=re.MULTILINE)
+        # Step 7: Clean up whitespace but preserve paragraph structure
+        body = re.sub(r'[ \t]+', ' ', body)  # Multiple spaces/tabs to single space
+        body = re.sub(r'\n[ \t]+', '\n', body)  # Remove spaces/tabs at start of lines
+        body = re.sub(r'[ \t]+\n', '\n', body)  # Remove spaces/tabs at end of lines
+        body = re.sub(r'\n{4,}', '\n\n\n', body)  # Max triple line breaks
         
-        # Step 8: Clean up whitespace and line breaks
-        body = re.sub(r'\s+', ' ', body)  # Multiple spaces to single
-        body = re.sub(r'\n\s*', '\n', body)  # Remove spaces after line breaks
-        body = re.sub(r'\n{3,}', '\n\n', body)  # Max double line breaks
-        
-        # Step 9: Remove common email signatures and footers
+        # Step 8: Remove common email signatures and footers
         signature_patterns = [
             r'--\s*\n.*',
             r'Sent from my iPhone.*',
@@ -141,6 +150,9 @@ class EmailProcessor:
         
         for pattern in signature_patterns:
             body = re.sub(pattern, '', body, flags=re.IGNORECASE | re.DOTALL)
+        
+        # Step 9: Restore header formatting
+        body = re.sub(r'\*\*(h[1-6])\*\*([^*]*)\*\*h[1-6]\*\*', r'\n\2\n', body, flags=re.IGNORECASE)
         
         # Step 10: Final cleanup
         return body.strip()
