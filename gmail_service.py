@@ -167,7 +167,9 @@ class GmailService:
     def get_authorization_url(self):
         """Get authorization URL for OAuth flow"""
         try:
+            print("🔍 Getting authorization URL...")
             credentials_data = self._get_credentials_data()
+            print(f"✅ Credentials data loaded: {len(str(credentials_data))} characters")
             
             # Create a temporary file for the credentials
             import tempfile
@@ -178,6 +180,7 @@ class GmailService:
             try:
                 # Check if it's a web application
                 if 'web' in credentials_data:
+                    print("🔍 Using web application flow")
                     # Use web application flow with dynamic redirect URI
                     redirect_uri = self._get_redirect_uri()
                     print(f"🔗 Using OAuth redirect URI: {redirect_uri}")
@@ -195,11 +198,14 @@ class GmailService:
                         prompt='consent'  # Force consent to get refresh token
                     )
                     
+                    print(f"✅ Authorization URL generated successfully")
                     return auth_url
                 else:
+                    print("🔍 Using desktop application flow")
                     # Use desktop application flow
                     flow = InstalledAppFlow.from_client_secrets_file(temp_file_path, self.SCOPES)
                     auth_url, _ = flow.authorization_url()
+                    print(f"✅ Authorization URL generated successfully")
                     return auth_url
             finally:
                 # Clean up temporary file
@@ -207,6 +213,10 @@ class GmailService:
                     os.unlink(temp_file_path)
                     
         except Exception as e:
+            print(f"❌ Error in get_authorization_url: {str(e)}")
+            print(f"❌ Exception type: {type(e).__name__}")
+            import traceback
+            print(f"❌ Full traceback: {traceback.format_exc()}")
             raise FileNotFoundError(f"Failed to get authorization URL: {e}")
     
     def exchange_code_for_tokens(self, code):

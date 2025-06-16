@@ -449,9 +449,22 @@ def connect_gmail():
 def start_gmail_auth():
     """Start Gmail OAuth flow"""
     try:
+        print("🔍 Starting Gmail OAuth flow...")
+        print(f"🔍 User ID: {session.get('user_id')}")
+        print(f"🔍 Environment variables:")
+        print(f"   - PORT: {os.environ.get('PORT')}")
+        print(f"   - DIGITALOCEAN_APP_PLATFORM: {os.environ.get('DIGITALOCEAN_APP_PLATFORM')}")
+        print(f"   - APP_URL: {os.environ.get('APP_URL')}")
+        print(f"   - APP_NAME: {os.environ.get('APP_NAME')}")
+        
         auth_url = gmail_service.get_authorization_url()
+        print(f"✅ Authorization URL generated: {auth_url[:100]}...")
         return render_template('auth_redirect.html', auth_url=auth_url)
     except Exception as e:
+        print(f"❌ Error in start_gmail_auth: {str(e)}")
+        print(f"❌ Exception type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         flash(f'Error starting authentication: {str(e)}', 'error')
         return redirect(url_for('connect_gmail'))
 
