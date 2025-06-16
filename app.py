@@ -377,6 +377,7 @@ def dashboard():
     
     # Check database state for debugging
     if user_model:
+        user_model.check_database_connectivity()
         user_model.check_database_state(user_id)
     
     user = user_model.get_user_by_id(user_id) if user_model else None
@@ -389,75 +390,54 @@ def dashboard():
     if not gmail_service:
         print("❌ Gmail service not available")
         flash('Gmail service is not available. Please check your configuration.', 'error')
-        return redirect(url_for('index'))
+        return render_template('dashboard.html', 
+                             emails=[], 
+                             email_threads={},
+                             summary="Gmail service unavailable. Please check your configuration.",
+                             action_items=[],
+                             recommendations=[],
+                             date=datetime.now().strftime('%B %d, %Y'),
+                             ai_processing=False)
     
-    # Check if Gmail is authenticated for this user
+    # Check Gmail authentication
     gmail_token = user_model.get_gmail_token(user_id) if user_model else None
     print(f"🔍 Gmail token from database: {'Found' if gmail_token else 'Not found'}")
     
     if not gmail_token:
         print("❌ No Gmail token found in database")
-        flash('Please connect your Gmail account first', 'warning')
+        flash('Please connect your Gmail account to continue.', 'warning')
         return redirect(url_for('connect_gmail'))
-    
-    # Set Gmail token for service
-    try:
-        if gmail_token:
-            print("🔍 Setting Gmail credentials from token")
-            gmail_service.set_credentials_from_token(gmail_token)
-            print("✅ Gmail credentials set successfully")
-    except Exception as e:
-        print(f"❌ Error setting Gmail credentials: {e}")
-        flash('Gmail token expired. Please reconnect your account.', 'warning')
-        return redirect(url_for('connect_gmail'))
-    
-    # Check if Gmail is authenticated
-    is_authenticated = gmail_service.is_authenticated()
-    print(f"🔍 Gmail service is_authenticated(): {is_authenticated}")
-    
-    if not is_authenticated:
-        print("❌ Gmail service reports not authenticated")
-        flash('Please connect your Gmail account first', 'warning')
-        return redirect(url_for('connect_gmail'))
-    
-    # Ensure session variable is set if Gmail is authenticated
-    if gmail_service.is_authenticated() and not session.get('gmail_authenticated'):
-        session['gmail_authenticated'] = True
-        print("✅ Set gmail_authenticated in session")
-    
-    print("✅ Gmail authentication check passed, proceeding to load emails")
     
     try:
-        # Get only 10 most recent emails for immediate display
-        recent_emails = gmail_service.get_todays_emails(max_results=10)
-        print(f"📧 Found {len(recent_emails)} recent emails")
+        # Validate the token before proceeding
+        print("🔍 Setting Gmail credentials from token...")
+        gmail_service.set_credentials_from_token(gmail_token)
         
-        if len(recent_emails) == 0:
-            # No emails found for today
-            return render_template('dashboard.html', 
-                                 emails=[], 
-                                 email_threads={},
-                                 summary="No emails found for today. Try checking a different date range or your Gmail connection.",
-                                 action_items=[],
-                                 recommendations=[],
-                                 date=datetime.now().strftime('%B %d, %Y'),
-                                 ai_processing=False)
+        if not gmail_service.is_authenticated():
+            print("❌ Gmail authentication failed - token may be expired")
+            # Clear the invalid token
+            user_model.update_gmail_token(user_id, None)
+            flash('Your Gmail connection has expired. Please reconnect your Gmail account.', 'warning')
+            return redirect(url_for('connect_gmail'))
         
-        # Filter out newsletters and daily alerts (less aggressive)
-        filtered_emails = email_processor.filter_emails(recent_emails)
-        print(f"🔍 After filtering: {len(filtered_emails)} emails")
+        print("✅ Gmail authentication successful")
         
-        # If no emails after filtering, show all emails
-        if len(filtered_emails) == 0:
-            print("⚠️ No emails after filtering, showing all emails")
-            filtered_emails = recent_emails
+        # Get today's emails
+        print("📧 Fetching today's emails...")
+        emails = gmail_service.get_todays_emails(max_results=50)
+        print(f"📧 Found {len(emails)} emails for today")
         
-        # Process emails with basic info only (no AI analysis yet)
-        processed_emails = email_processor.process_emails_basic(filtered_emails)
+        # Filter emails if needed
+        filtered_emails = email_processor.filter_emails(emails) if email_processor else emails
+        print(f"📧 After filtering: {len(filtered_emails)} emails")
+        
+        # Process emails with basic information
+        print("⚙️ Processing emails...")
+        processed_emails = email_processor.process_emails_basic(filtered_emails) if email_processor else filtered_emails
         print(f"✅ Processed {len(processed_emails)} emails")
         
         # Group emails by sender and subject for thread analysis
-        email_threads = email_processor.group_emails_by_thread(processed_emails)
+        email_threads = email_processor.group_emails_by_thread(processed_emails) if email_processor else {}
         print(f"🧵 Created {len(email_threads)} email threads")
         
         # Get current date
@@ -475,6 +455,16 @@ def dashboard():
     
     except Exception as e:
         print(f"❌ Error in dashboard: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Check if it's an authentication error
+        if "authentication" in str(e).lower() or "credentials" in str(e).lower():
+            print("🔍 Authentication error detected, clearing token...")
+            user_model.update_gmail_token(user_id, None)
+            flash('Your Gmail connection has expired. Please reconnect your Gmail account.', 'warning')
+            return redirect(url_for('connect_gmail'))
+        
         flash(f'Error loading dashboard: {str(e)}', 'error')
         # Provide default values for template
         return render_template('dashboard.html', 

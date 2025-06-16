@@ -589,6 +589,32 @@ class User:
             print(f"❌ [DEBUG] Error checking database state: {e}")
             return False
 
+    def check_database_connectivity(self):
+        """Check database connectivity and health"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Test basic connectivity
+            cursor.execute('SELECT 1')
+            result = cursor.fetchone()
+            
+            # Check tables exist
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            users_table = cursor.fetchone()
+            
+            conn.close()
+            
+            print(f"🔍 [DEBUG] Database connectivity:")
+            print(f"   Basic query: {'✅ Success' if result else '❌ Failed'}")
+            print(f"   Users table: {'✅ Exists' if users_table else '❌ Missing'}")
+            
+            return bool(result and users_table)
+            
+        except Exception as e:
+            print(f"❌ [DEBUG] Database connectivity error: {e}")
+            return False
+
 class SubscriptionPlan:
     """Subscription plan model"""
     
