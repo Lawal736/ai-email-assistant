@@ -557,39 +557,78 @@
     
     /* Thread messages styling */
     .thread-message {
-        background: linear-gradient(135deg, rgba(248, 250, 252, 0.8), rgba(226, 232, 240, 0.8));
-        backdrop-filter: blur(10px);
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 12px;
-        border-left: 4px solid var(--primary-color);
-        transition: all 0.3s ease;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        transition: all 0.2s ease;
     }
     
     .thread-message:hover {
-        transform: translateX(4px);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
     }
     
     .thread-message-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 8px;
+        padding: 16px 20px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        margin-bottom: 0;
+    }
+    
+    .thread-message-header span:first-child {
         font-weight: 600;
-        color: var(--dark-color);
+        color: #1f2937;
+        font-size: 0.95rem;
     }
     
     .thread-message-time {
-        font-size: 0.85rem;
         color: #6b7280;
+        font-size: 0.85rem;
         font-weight: 500;
     }
     
-    .thread-message-content {
-        color: #4b5563;
-        line-height: 1.5;
-        font-size: 0.95rem;
+    .thread-message-body {
+        background: rgba(248, 250, 252, 0.6);
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 16px 20px 20px;
+        border-left: 3px solid #e5e7eb;
+        border: none;
+    }
+    
+    .thread-modal-content h5 {
+        color: #1f2937;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    
+    .thread-messages-list {
+        max-height: 60vh;
+        overflow-y: auto;
+        padding-right: 8px;
+    }
+    
+    /* Enhanced scrollbar for thread messages */
+    .thread-messages-list::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .thread-messages-list::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 3px;
+    }
+    
+    .thread-messages-list::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    
+    .thread-messages-list::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
     }
     
     /* Enhanced button groups */
@@ -693,12 +732,13 @@
         font-weight: 600;
     }
     
-    .thread-message-body {
-        background: rgba(255, 255, 255, 0.8);
-        border-radius: 8px;
-        padding: 16px;
-        margin-top: 12px;
-        border-left: 3px solid #e5e7eb;
+    .email-content code {
+        background-color: #f3f4f6;
+        color: #374151;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        font-size: 0.85rem;
     }
 </style>
 {% endblock %}
@@ -1092,29 +1132,25 @@ function formatEmailContent(content) {
     
     console.log("🔍 Original content:", content.substring(0, 200) + "...");
     
-    // Remove HTML tags and CSS styles more aggressively
+    // Step 1: Remove all HTML and CSS completely
     let cleaned = content
-        // Remove CSS styles completely
+        // Remove style blocks completely (CSS)
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        // Remove CSS in style attributes
+        
+        // Remove inline CSS styles
         .replace(/style\s*=\s*["'][^"']*["']/gi, '')
-        // Remove HTML tags but keep line breaks
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n')
-        .replace(/<p[^>]*>/gi, '')
-        .replace(/<div[^>]*>/gi, '')
-        .replace(/<\/div>/gi, '\n')
-        .replace(/<span[^>]*>/gi, '')
-        .replace(/<\/span>/gi, '')
-        .replace(/<td[^>]*>/gi, '')
-        .replace(/<\/td>/gi, ' ')
-        .replace(/<tr[^>]*>/gi, '')
-        .replace(/<\/tr>/gi, '\n')
-        .replace(/<table[^>]*>/gi, '')
-        .replace(/<\/table>/gi, '\n')
-        // Remove other common HTML tags
+        .replace(/class\s*=\s*["'][^"']*["']/gi, '')
+        .replace(/id\s*=\s*["'][^"']*["']/gi, '')
+        
+        // Convert structural HTML to line breaks first
+        .replace(/<\/?(div|p|br|tr|td|th|table|tbody|thead|tfoot)[^>]*>/gi, '\n')
+        .replace(/<\/h[1-6][^>]*>/gi, '\n\n')
+        .replace(/<h[1-6][^>]*>/gi, '\n')
+        
+        // Remove ALL remaining HTML tags
         .replace(/<[^>]+>/g, '')
+        
         // Decode HTML entities
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
@@ -1122,32 +1158,78 @@ function formatEmailContent(content) {
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
-        // Clean up multiple spaces and line breaks
-        .replace(/\s+/g, ' ')
-        .replace(/\n\s*\n/g, '\n\n')
+        .replace(/&hellip;/g, '...')
+        .replace(/&mdash;/g, '—')
+        .replace(/&ndash;/g, '–')
+        
+        // Clean up whitespace and line breaks
+        .replace(/\s+/g, ' ')           // Multiple spaces to single space
+        .replace(/\n\s*/g, '\n')        // Remove spaces after line breaks
+        .replace(/\n{3,}/g, '\n\n')     // Multiple line breaks to double
         .trim();
     
-    console.log("🔍 Cleaned content:", cleaned.substring(0, 200) + "...");
+    console.log("🔍 After HTML removal:", cleaned.substring(0, 200) + "...");
     
-    // Format the content with proper line breaks
-    const lines = cleaned.split('\n');
-    const formattedLines = lines.map(line => {
-        line = line.trim();
-        if (!line) return '';
+    // Step 2: Parse and format the content intelligently
+    const lines = cleaned.split('\n').filter(line => line.trim().length > 0);
+    const formattedLines = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        if (!line) continue;
         
-        // Format common email patterns
-        if (line.includes(':')) {
-            const [key, ...valueParts] = line.split(':');
-            const value = valueParts.join(':').trim();
-            if (key.trim().length < 30 && value) {
-                return `<strong>${key.trim()}:</strong> ${value}`;
+        // Skip common CSS remnants or style fragments
+        if (line.match(/^(font-family|color|text-align|height|width|margin|padding|display)/i)) {
+            continue;
+        }
+        
+        // Skip time stamps that look like CSS
+        if (line.match(/^\d{1,2}:\d{2}:\d{2}\s+(AM|PM)$/)) {
+            // This is likely a timestamp, format it nicely
+            formattedLines.push(`<strong>Time:</strong> ${line}`);
+            continue;
+        }
+        
+        // Format key-value pairs (common in bank notifications)
+        if (line.includes(':') && line.split(':').length === 2) {
+            const [key, value] = line.split(':').map(part => part.trim());
+            
+            // Check if this looks like a legitimate key-value pair
+            if (key.length < 50 && value.length > 0 && 
+                !key.match(/^(font-family|color|text-align|height|width)$/i)) {
+                formattedLines.push(`<strong>${key}:</strong> ${value}`);
+                continue;
             }
         }
         
-        return line;
-    }).filter(line => line.length > 0);
+        // Format currency amounts
+        line = line.replace(/\b(NGN|USD|EUR|GBP)\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/g, 
+                           '<strong>$1 $2</strong>');
+        
+        // Format account numbers (partially masked)
+        line = line.replace(/\*{4,}\d{4}/g, '<code>$&</code>');
+        
+        // Format transaction references
+        line = line.replace(/\b\d{12,}\b/g, '<code>$&</code>');
+        
+        // Bold important terms
+        line = line.replace(/\b(DEBIT|CREDIT|Account Number|Transaction|Amount|Balance|Reference)\b/gi, 
+                           '<strong>$1</strong>');
+        
+        formattedLines.push(line);
+    }
     
-    const result = formattedLines.join('<br>');
+    // Step 3: Join with proper spacing
+    let result = formattedLines.join('<br>');
+    
+    // Step 4: Final cleanup - remove any remaining CSS-like content
+    result = result.replace(/\b\w+\s*:\s*[^;]+;/g, ''); // Remove any remaining CSS properties
+    result = result.replace(/\{\s*[^}]*\}/g, '');        // Remove any remaining CSS blocks
+    
+    // Step 5: Clean up extra spaces and line breaks
+    result = result.replace(/<br>\s*<br>/g, '<br><br>');  // Double line breaks
+    result = result.replace(/(<br>\s*){3,}/g, '<br><br>'); // Max double line breaks
+    
     console.log("🔍 Final formatted content:", result.substring(0, 200) + "...");
     
     return result;

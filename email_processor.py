@@ -84,27 +84,65 @@ class EmailProcessor:
         return ''
     
     def _clean_email_body(self, body: str) -> str:
-        """Clean email body text"""
+        """Clean email body text - comprehensive HTML/CSS removal"""
         if not body:
             return ''
         
-        # Remove HTML tags
+        # Step 1: Remove style blocks and scripts completely
+        body = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', body, flags=re.IGNORECASE)
+        body = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', body, flags=re.IGNORECASE)
+        
+        # Step 2: Remove inline CSS and attributes
+        body = re.sub(r'style\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
+        body = re.sub(r'class\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
+        body = re.sub(r'id\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
+        body = re.sub(r'width\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
+        body = re.sub(r'height\s*=\s*["\'][^"\']*["\']', '', body, flags=re.IGNORECASE)
+        
+        # Step 3: Convert structural HTML to line breaks first
+        body = re.sub(r'</?(?:div|p|br|tr|td|th|table|tbody|thead|tfoot)[^>]*>', '\n', body, flags=re.IGNORECASE)
+        body = re.sub(r'</h[1-6][^>]*>', '\n\n', body, flags=re.IGNORECASE)
+        body = re.sub(r'<h[1-6][^>]*>', '\n', body, flags=re.IGNORECASE)
+        
+        # Step 4: Remove all remaining HTML tags
         body = re.sub(r'<[^>]+>', '', body)
         
-        # Remove extra whitespace
-        body = re.sub(r'\s+', ' ', body)
+        # Step 5: Decode HTML entities
+        html_entities = {
+            '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+            '&#39;': "'", '&hellip;': '...', '&mdash;': '—', '&ndash;': '–',
+            '&rsquo;': "'", '&lsquo;': "'", '&rdquo;': '"', '&ldquo;': '"'
+        }
+        for entity, replacement in html_entities.items():
+            body = body.replace(entity, replacement)
         
-        # Remove common email signatures
+        # Step 6: Clean up CSS remnants and orphaned style properties
+        body = re.sub(r'\b\w+\s*:\s*[^;]+;', '', body)  # Remove CSS properties
+        body = re.sub(r'\{[^}]*\}', '', body)  # Remove CSS blocks
+        
+        # Step 7: Remove time stamps that are likely CSS remnants
+        body = re.sub(r'^\d{1,2}:\d{2}:\d{2}\s+(AM|PM)\s*$', '', body, flags=re.MULTILINE)
+        
+        # Step 8: Clean up whitespace and line breaks
+        body = re.sub(r'\s+', ' ', body)  # Multiple spaces to single
+        body = re.sub(r'\n\s*', '\n', body)  # Remove spaces after line breaks
+        body = re.sub(r'\n{3,}', '\n\n', body)  # Max double line breaks
+        
+        # Step 9: Remove common email signatures and footers
         signature_patterns = [
             r'--\s*\n.*',
             r'Sent from my iPhone.*',
             r'Get Outlook for.*',
-            r'This email was sent.*'
+            r'This email was sent.*',
+            r'Unsubscribe.*',
+            r'If you no longer wish to receive.*',
+            r'This message was sent to.*'
         ]
         
         for pattern in signature_patterns:
             body = re.sub(pattern, '', body, flags=re.IGNORECASE | re.DOTALL)
         
+        # Step 10: Final cleanup
         return body.strip()
     
     def _create_preview(self, text: str, max_length: int) -> str:
