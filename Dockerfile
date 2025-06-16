@@ -1,4 +1,36 @@
-# Use Python 3.12 slim image
+# Multi-stage build for better compilation support
+FROM python:3.12 as builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        libc6-dev \
+        libffi-dev \
+        libssl-dev \
+        pkg-config \
+        build-essential \
+        libxml2-dev \
+        libxslt-dev \
+        zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies in a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and install dependencies
+RUN pip install --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Production stage
 FROM python:3.12-slim
 
 # Set working directory
@@ -10,18 +42,17 @@ ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 
-# Install system dependencies
+# Install runtime dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        gcc \
         curl \
+        libxml2 \
+        libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY . .
