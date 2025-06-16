@@ -679,6 +679,27 @@
             overflow: hidden;
         }
     }
+
+    /* Enhanced email content styling */
+    .email-content {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.6;
+        color: #374151;
+        font-size: 0.95rem;
+    }
+    
+    .email-content strong {
+        color: #1f2937;
+        font-weight: 600;
+    }
+    
+    .thread-message-body {
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 12px;
+        border-left: 3px solid #e5e7eb;
+    }
 </style>
 {% endblock %}
 
@@ -1035,14 +1056,18 @@ function viewThread(threadKey) {
     thread.emails.forEach((email, index) => {
         console.log(`🔍 Processing email ${index}:`, email);
         const time = email.date && email.date.includes('T') ? email.date.split('T')[1].substring(0, 5) : (email.date || '');
+        const formattedContent = formatEmailContent(email.body_clean || email.body || '');
+        
         threadMessagesHtml += `
             <div class="thread-message">
                 <div class="thread-message-header">
                     <span><i class="fas fa-user me-2"></i>${email.sender_clean || email.sender}</span>
                     <span class="thread-message-time"><i class="fas fa-clock me-1"></i>${time}</span>
                 </div>
-                <div class="thread-message-body mt-2">
-                    ${email.body_clean || email.body || ''}
+                <div class="thread-message-body mt-3">
+                    <div class="email-content">
+                        ${formattedContent}
+                    </div>
                 </div>
             </div>
         `;
@@ -1062,14 +1087,54 @@ function viewThread(threadKey) {
     console.log("✅ Modal show called");
 }
 
-function formatAnalysisContent(content) {
-    // Convert markdown headers to HTML
-    return content
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-        .replace(/<\/ul>\s*<ul>/g, '')
-        .replace(/\n/g, '<br>');
+function formatEmailContent(content) {
+    if (!content) return '';
+    
+    // Remove HTML tags and CSS styles
+    let cleaned = content
+        // Remove CSS styles
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        // Remove script tags
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        // Remove HTML tags but keep line breaks
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<p[^>]*>/gi, '')
+        .replace(/<div[^>]*>/gi, '')
+        .replace(/<\/div>/gi, '\n')
+        // Remove other common HTML tags
+        .replace(/<[^>]+>/g, '')
+        // Decode HTML entities
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        // Clean up multiple spaces and line breaks
+        .replace(/\s+/g, ' ')
+        .replace(/\n\s*\n/g, '\n\n')
+        .trim();
+    
+    // Format the content with proper line breaks
+    const lines = cleaned.split('\n');
+    const formattedLines = lines.map(line => {
+        line = line.trim();
+        if (!line) return '';
+        
+        // Format common email patterns
+        if (line.includes(':')) {
+            const [key, ...valueParts] = line.split(':');
+            const value = valueParts.join(':').trim();
+            if (key.trim().length < 30 && value) {
+                return `<strong>${key.trim()}:</strong> ${value}`;
+            }
+        }
+        
+        return line;
+    }).filter(line => line.length > 0);
+    
+    return formattedLines.join('<br>');
 }
 
 function analyzeThread(threadKey) {
@@ -1145,7 +1210,7 @@ function analyzeThread(threadKey) {
                 <div class="border-top pt-3">
                     <h6>Thread Analysis:</h6>
                     <div class="analysis-content bg-light p-3 rounded">
-                        ${formatAnalysisContent(data.content)}
+                        ${formatEmailContent(data.content)}
                     </div>
                 </div>
                 <div class="mt-3">
@@ -1185,6 +1250,8 @@ function viewEmail(emailId) {
     
     if (email) {
         const modalBody = document.getElementById('emailModalBody');
+        const formattedContent = formatEmailContent(email.body_clean || email.body);
+        
         modalBody.innerHTML = `
             <div class="mb-3">
                 <strong>From:</strong> ${email.sender}<br>
@@ -1196,7 +1263,9 @@ function viewEmail(emailId) {
             <div class="border-top pt-3">
                 <h6>Email Content:</h6>
                 <div class="bg-light p-3 rounded">
-                    ${email.body_clean || email.body}
+                    <div class="email-content">
+                        ${formattedContent}
+                    </div>
                 </div>
             </div>
         `;
@@ -1322,7 +1391,7 @@ function generateCustomInsights() {
                 <div class="border-top pt-3">
                     <h6>Custom Analysis:</h6>
                     <div class="analysis-content bg-light p-3 rounded">
-                        ${formatAnalysisContent(data.custom_insights)}
+                        ${formatEmailContent(data.custom_insights)}
                     </div>
                 </div>
                 <div class="mt-3">
