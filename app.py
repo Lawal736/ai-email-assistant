@@ -20,11 +20,27 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
 
 # Configure session for production vs development
-if (
+# More robust detection for Digital Ocean App Platform
+is_production = (
     os.environ.get('K_SERVICE') or
     os.environ.get('CLOUD_RUN_SERVICE') or
-    os.environ.get('DIGITALOCEAN_APP_PLATFORM')
-):
+    os.environ.get('DIGITALOCEAN_APP_PLATFORM') or
+    os.environ.get('APP_PLATFORM') or
+    os.environ.get('PORT') == '8080' or  # Digital Ocean default
+    os.environ.get('PORT') == '5001' or  # Your current port
+    os.environ.get('FLASK_ENV') == 'production'
+)
+
+print(f"🔧 Environment detection:")
+print(f"   - K_SERVICE: {os.environ.get('K_SERVICE')}")
+print(f"   - CLOUD_RUN_SERVICE: {os.environ.get('CLOUD_RUN_SERVICE')}")
+print(f"   - DIGITALOCEAN_APP_PLATFORM: {os.environ.get('DIGITALOCEAN_APP_PLATFORM')}")
+print(f"   - APP_PLATFORM: {os.environ.get('APP_PLATFORM')}")
+print(f"   - PORT: {os.environ.get('PORT')}")
+print(f"   - FLASK_ENV: {os.environ.get('FLASK_ENV')}")
+print(f"   - Is Production: {is_production}")
+
+if is_production:
     # Production environment (Cloud Run or Digital Ocean)
     app.config.update(
         SESSION_COOKIE_SECURE=True,
@@ -36,7 +52,9 @@ if (
     )
     print("🔧 Production session configuration applied")
     print(f"🔧 SECRET_KEY set: {'Yes' if app.secret_key and app.secret_key != 'your-secret-key-here-change-this-in-production' else 'No'}")
-    print(f"🔧 DIGITALOCEAN_APP_PLATFORM: {os.environ.get('DIGITALOCEAN_APP_PLATFORM')}")
+    print(f"🔧 SESSION_COOKIE_SECURE: {app.config.get('SESSION_COOKIE_SECURE')}")
+    print(f"🔧 SESSION_COOKIE_HTTPONLY: {app.config.get('SESSION_COOKIE_HTTPONLY')}")
+    print(f"🔧 SESSION_COOKIE_SAMESITE: {app.config.get('SESSION_COOKIE_SAMESITE')}")
 else:
     # Development environment
     app.config.update(
