@@ -32,8 +32,9 @@ lxml==4.9.3
 bcrypt==4.1.2
 
 # Web3 dependencies for crypto payments
-web3==6.11.3
-eth-account==0.9.0
+web3>=6.0.0
+eth-account>=0.13.6
+parsimonious>=0.10.0  # Compatible with Python 3.12
 
 # Additional utilities
 httpx==0.25.2
@@ -53,7 +54,7 @@ rsa==4.9
 httplib2==0.22.0
 google-api-core==2.15.0
 googleapis-common-protos==1.61.0
-protobuf==4.25.1
+protobuf==3.19.5
 typing-extensions==4.8.0
 packaging==23.2
 setuptools==69.0.2
