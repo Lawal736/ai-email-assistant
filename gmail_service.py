@@ -30,10 +30,22 @@ class GmailService:
     
     def _get_redirect_uri(self):
         """Get the OAuth redirect URI based on environment"""
-        # Check if we're in production (Cloud Run)
-        if os.environ.get('K_SERVICE') or os.environ.get('CLOUD_RUN_SERVICE'):
+        # Check if we're in production (Cloud Run or Digital Ocean)
+        if (os.environ.get('K_SERVICE') or 
+            os.environ.get('CLOUD_RUN_SERVICE') or 
+            os.environ.get('DIGITALOCEAN_APP_PLATFORM') or
+            os.environ.get('APP_PLATFORM') or
+            os.environ.get('PORT') == '8080'):  # Digital Ocean uses port 8080
+            
             # Production environment - use the actual domain
-            domain = os.environ.get('DOMAIN', 'app.inbox-genius.com')
+            # Try to get domain from environment or use the Digital Ocean app URL
+            domain = os.environ.get('DOMAIN') or os.environ.get('APP_URL')
+            
+            # If no domain set, try to construct from Digital Ocean app name
+            if not domain:
+                app_name = os.environ.get('APP_NAME', 'ai-email-assistant')
+                domain = f"{app_name}-dszjy.ondigitalocean.app"
+            
             redirect_uri = f'https://{domain}/oauth2callback'
             print(f"🔗 Production OAuth redirect URI: {redirect_uri}")
             return redirect_uri

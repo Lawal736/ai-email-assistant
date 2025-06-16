@@ -456,11 +456,13 @@ def start_gmail_auth():
         return redirect(url_for('connect_gmail'))
 
 @app.route('/oauth2callback')
-@login_required
 def oauth2callback():
     """Handle OAuth callback"""
     try:
         print("🔍 OAuth callback received")
+        print(f"🔍 Session data: {dict(session)}")
+        print(f"🔍 Request args: {dict(request.args)}")
+        
         # Get authorization code from query parameters
         code = request.args.get('code')
         if not code:
@@ -468,15 +470,24 @@ def oauth2callback():
             flash('Authorization code not received', 'error')
             return redirect(url_for('connect_gmail'))
         print(f"✅ Authorization code received: {code[:20]}...")
+        
+        # Check if user is logged in
+        user_id = session.get('user_id')
+        if not user_id:
+            print("❌ No user_id in session - user not logged in")
+            flash('Please log in first', 'error')
+            return redirect(url_for('login'))
+        
         # Exchange code for tokens
         gmail_service.exchange_code_for_tokens(code)
         print("✅ Code exchanged for tokens")
+        
         # Save Gmail token for user
-        user_id = session.get('user_id')
         print(f"🔍 User ID from session: {user_id}")
         token_data = gmail_service.get_token_data()
         print(f"🔍 Token data received: {token_data is not None}")
         gmail_email = None
+        
         # Fetch Gmail email address from profile
         try:
             profile = gmail_service.get_user_profile()
@@ -484,11 +495,13 @@ def oauth2callback():
             print(f"✅ Gmail email fetched: {gmail_email}")
         except Exception as e:
             print(f"⚠️ Could not fetch Gmail email: {e}")
+        
         if user_model and token_data:
             user_model.update_gmail_token(user_id, json.dumps(token_data), gmail_email)
             print("✅ Gmail token and email saved to database")
         else:
             print("❌ Failed to save token - user_model or token_data is None")
+        
         # Set session variable to indicate Gmail is authenticated
         session['gmail_authenticated'] = True
         print("✅ Session updated with Gmail authentication")

@@ -18,6 +18,12 @@ FLASK_DEBUG=0
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
+# Digital Ocean App Platform Configuration
+# Set these in Digital Ocean App Platform environment variables
+APP_NAME=ai-email-assistant
+APP_URL=https://ai-email-assistant-dszjy.ondigitalocean.app
+DIGITALOCEAN_APP_PLATFORM=true
+
 # Paystack Configuration
 PAYSTACK_PUBLIC_KEY=your-paystack-public-key
 PAYSTACK_SECRET_KEY=your-paystack-secret-key
