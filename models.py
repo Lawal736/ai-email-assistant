@@ -123,7 +123,7 @@ class DatabaseManager:
             INSERT OR IGNORE INTO subscription_plans 
             (name, price_monthly, price_yearly, email_limit, features, stripe_price_id_monthly, stripe_price_id_yearly)
             VALUES 
-            ('free', 0.00, 0.00, 50, 'Basic email analysis, Daily summaries, Action items', NULL, NULL),
+            ('free', 0.00, 0.00, 100, 'Basic email analysis, Daily summaries, Action items, 10 emails per load, 100 emails per month', NULL, NULL),
             ('pro', 9.99, 99.99, 500, 'Advanced AI analysis, Document processing, Priority support, Custom insights', 'price_monthly_pro', 'price_yearly_pro'),
             ('enterprise', 29.99, 299.99, 2000, 'Unlimited analysis, Team collaboration, API access, Custom integrations', 'price_monthly_enterprise', 'price_yearly_enterprise')
         ''')

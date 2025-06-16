@@ -1206,7 +1206,11 @@ def api_emails():
         if not gmail_service.is_authenticated():
             return jsonify({'error': 'Gmail authentication expired'}), 401
         
-        emails = gmail_service.get_todays_emails()
+        # Get user plan for email limits
+        user = user_model.get_user_by_id(user_id) if user_model else None
+        user_plan = user.get('subscription_plan', 'free') if user else 'free'
+        
+        emails = gmail_service.get_todays_emails(user_plan=user_plan)
         processed_emails = email_processor.process_emails(emails)
         
         # Track usage
@@ -1240,7 +1244,11 @@ def api_summary():
         if not gmail_service.is_authenticated():
             return jsonify({'error': 'Gmail authentication expired'}), 401
         
-        emails = gmail_service.get_todays_emails()
+        # Get user plan for email limits  
+        user = user_model.get_user_by_id(user_id) if user_model else None
+        user_plan = user.get('subscription_plan', 'free') if user else 'free'
+        
+        emails = gmail_service.get_todays_emails(user_plan=user_plan)
         processed_emails = email_processor.process_emails(emails)
         
         summary_result = ai_service.generate_daily_summary(processed_emails)
@@ -1355,9 +1363,23 @@ def api_analyze_email():
         if attachment_analysis and user_plan != 'free':
             email_content += f"\n\nAttachment Analysis:\n{attachment_analysis}"
         
-        # Validate content
+        # Enhanced content validation with fallback
         if not email_content.strip():
-            return jsonify({'error': 'Email content is empty or could not be extracted'}), 400
+            # Try to use email snippet as fallback
+            snippet = processed_email.get('snippet', '')
+            if snippet.strip():
+                email_content = f"Email preview: {snippet}"
+                print(f"🔍 Using email snippet as fallback content: {len(snippet)} chars")
+            else:
+                # Last resort: provide minimal analysis based on subject and sender
+                if subject.strip() or sender.strip():
+                    email_content = f"Subject: {subject}\nFrom: {sender}\n\nThis email could not be fully extracted, but basic information is available for analysis."
+                    print(f"🔍 Using subject/sender as fallback content")
+                else:
+                    return jsonify({
+                        'error': 'Email content could not be extracted and no fallback information is available',
+                        'suggestion': 'This email may have an unsupported format. Try opening it in Gmail directly.'
+                    }), 400
         
         # Generate analysis based on type
         try:

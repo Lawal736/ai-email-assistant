@@ -318,10 +318,20 @@ class GmailService:
         
         return self.service
     
-    def get_todays_emails(self, max_results=50):
-        """Get emails from today"""
+    def get_todays_emails(self, max_results=50, user_plan='free'):
+        """Get emails from today with subscription-aware limits"""
         try:
             service = self._get_service()
+            
+            # Apply subscription-based limits
+            if user_plan == 'free':
+                # Free users: max 10 emails per load
+                effective_max_results = min(max_results, 10)
+                print(f"🔍 Free user limit applied: {effective_max_results} emails max")
+            else:
+                # Pro/Enterprise users: use requested limit
+                effective_max_results = max_results
+                print(f"🔍 {user_plan.capitalize()} user: {effective_max_results} emails max")
             
             # Calculate date range for today
             today = datetime.now().date()
@@ -335,7 +345,7 @@ class GmailService:
             results = service.users().messages().list(
                 userId='me',
                 q=query,
-                maxResults=max_results
+                maxResults=effective_max_results
             ).execute()
             
             messages = results.get('messages', [])
@@ -415,20 +425,70 @@ class GmailService:
             return None
     
     def _extract_email_body(self, payload):
-        """Extract email body from payload"""
-        if 'body' in payload and payload['body'].get('data'):
-            return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
+        """Extract email body from payload with robust MIME handling"""
+        try:
+            # First, try direct body access
+            if 'body' in payload and payload['body'].get('data'):
+                decoded = base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors='ignore')
+                if decoded.strip():
+                    return decoded
+            
+            # If no direct body, recursively search parts
+            if 'parts' in payload:
+                text_content = self._extract_from_parts(payload['parts'])
+                if text_content.strip():
+                    return text_content
+            
+            # Fallback: use snippet if available
+            return ''
+            
+        except Exception as e:
+            print(f"Error extracting email body: {e}")
+            return ''
+    
+    def _extract_from_parts(self, parts):
+        """Recursively extract text from email parts"""
+        text_content = ''
+        html_content = ''
         
-        if 'parts' in payload:
-            for part in payload['parts']:
-                if part['mimeType'] == 'text/plain':
-                    if 'data' in part['body']:
-                        return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-                elif part['mimeType'] == 'text/html':
-                    if 'data' in part['body']:
-                        return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+        for part in parts:
+            try:
+                mime_type = part.get('mimeType', '')
+                
+                # Handle nested parts recursively
+                if 'parts' in part:
+                    nested_content = self._extract_from_parts(part['parts'])
+                    if nested_content.strip():
+                        text_content += nested_content + '\n'
+                
+                # Extract text from current part
+                elif 'body' in part and part['body'].get('data'):
+                    try:
+                        decoded = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors='ignore')
+                        
+                        if mime_type == 'text/plain' and decoded.strip():
+                            text_content += decoded + '\n'
+                        elif mime_type == 'text/html' and decoded.strip():
+                            html_content += decoded + '\n'
+                        elif 'text/' in mime_type and decoded.strip():
+                            # Handle other text types
+                            text_content += decoded + '\n'
+                            
+                    except Exception as decode_error:
+                        print(f"Error decoding part with MIME type {mime_type}: {decode_error}")
+                        continue
+                        
+            except Exception as part_error:
+                print(f"Error processing email part: {part_error}")
+                continue
         
-        return ''
+        # Prefer plain text, fall back to HTML
+        if text_content.strip():
+            return text_content.strip()
+        elif html_content.strip():
+            return html_content.strip()
+        else:
+            return ''
     
     def _extract_attachments(self, payload):
         """Extract attachment information from email payload"""
