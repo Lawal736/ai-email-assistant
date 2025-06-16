@@ -251,17 +251,28 @@ class User:
     
     def update_gmail_token(self, user_id, token_data, gmail_email=None):
         """Update user's Gmail token and optionally Gmail email address"""
+        print(f"🔍 [DEBUG] update_gmail_token called for user_id: {user_id}")
+        print(f"🔍 [DEBUG] token_data length: {len(str(token_data)) if token_data else 0}")
+        print(f"🔍 [DEBUG] gmail_email: {gmail_email}")
+        
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
         # Always update both fields - if gmail_email is None, it will clear the field
         cursor.execute('UPDATE users SET gmail_token = ?, gmail_email = ? WHERE id = ?', (token_data, gmail_email, user_id))
         
+        rows_affected = cursor.rowcount
+        print(f"🔍 [DEBUG] Rows affected by update: {rows_affected}")
+        
         conn.commit()
         conn.close()
+        
+        print(f"✅ [DEBUG] Gmail token update completed for user_id: {user_id}")
     
     def get_gmail_token(self, user_id):
         """Get user's Gmail token"""
+        print(f"🔍 [DEBUG] get_gmail_token called for user_id: {user_id}")
+        
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
@@ -269,7 +280,12 @@ class User:
         result = cursor.fetchone()
         conn.close()
         
-        return result[0] if result else None
+        token_found = result[0] if result else None
+        print(f"🔍 [DEBUG] Token found: {'Yes' if token_found else 'No'}")
+        if token_found:
+            print(f"🔍 [DEBUG] Token length: {len(str(token_found))}")
+        
+        return token_found
     
     def get_gmail_email(self, user_id):
         """Get user's linked Gmail email address"""
