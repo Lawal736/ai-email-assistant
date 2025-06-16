@@ -203,13 +203,15 @@
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Emails Processed This Month</label>
                                 <div class="d-flex align-items-center">
-                                    {% set usage_percentage = (user.api_usage_count / user.monthly_usage_limit * 100) if user.monthly_usage_limit > 0 else 0 %}
+                                    {% set usage_count = user.api_usage_count or 0 %}
+                                    {% set usage_limit = user.monthly_usage_limit or 100 %}
+                                    {% set usage_percentage = (usage_count / usage_limit * 100) if usage_limit > 0 else 0 %}
                                     <div class="progress flex-grow-1 me-3" style="height: 20px;">
                                         <div class="progress-bar bg-{{ 'danger' if usage_percentage > 90 else 'warning' if usage_percentage > 70 else 'success' }}" 
                                              style="width: {{ usage_percentage }}%">
                                         </div>
                                     </div>
-                                    <span class="fw-bold">{{ user.api_usage_count }} / {{ user.monthly_usage_limit }}</span>
+                                    <span class="fw-bold">{{ usage_count }} / {{ usage_limit }}</span>
                                 </div>
                                 <small class="text-muted">
                                     {{ "%.1f"|format(usage_percentage) }}% of monthly limit used
@@ -219,21 +221,22 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Remaining Emails</label>
-                                <h3 class="text-{{ 'danger' if (user.monthly_usage_limit - user.api_usage_count) < 10 else 'success' }}">
-                                    {{ user.monthly_usage_limit - user.api_usage_count }}
+                                {% set remaining = usage_limit - usage_count %}
+                                <h3 class="text-{{ 'danger' if remaining < 10 else 'success' }}">
+                                    {{ remaining }}
                                 </h3>
                                 <small class="text-muted">emails remaining this month</small>
                             </div>
                         </div>
                     </div>
                     
-                    {% if user.api_usage_count >= user.monthly_usage_limit %}
+                    {% if usage_count >= usage_limit %}
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle me-2"></i>
                         <strong>Usage Limit Reached:</strong> You've reached your monthly email processing limit. 
                         <a href="{{ url_for('pricing') }}" class="alert-link">Upgrade your plan</a> to continue using the service.
                     </div>
-                    {% elif user.api_usage_count >= (user.monthly_usage_limit * 0.8) %}
+                    {% elif usage_count >= (usage_limit * 0.8) %}
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
                         <strong>Usage Warning:</strong> You're approaching your monthly limit. 

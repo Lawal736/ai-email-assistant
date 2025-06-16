@@ -950,6 +950,29 @@ def account():
     user_id = session.get('user_id')
     # Always fetch the latest user data from the database
     user = user_model.get_user_by_id(user_id) if user_model else None
+    
+    # If user is not found, handle gracefully
+    if not user:
+        print(f"❌ User not found in database for user_id: {user_id}")
+        # Provide a default user structure to prevent template errors
+        user = {
+            'id': user_id,
+            'email': session.get('user_email', 'Unknown'),
+            'subscription_plan': 'free',
+            'subscription_status': 'inactive',
+            'api_usage_count': 0,
+            'monthly_usage_limit': 100,  # Default free plan limit
+            'created_at': None,
+            'last_login': None,
+            'gmail_email': None
+        }
+    else:
+        # Ensure required fields exist with defaults
+        user.setdefault('api_usage_count', 0)
+        user.setdefault('monthly_usage_limit', 100)
+        user.setdefault('subscription_plan', 'free')
+        user.setdefault('subscription_status', 'inactive')
+    
     payments = payment_model.get_user_payments(user_id) if payment_model else []
     user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
     currency_symbol = currency_service.get_currency_symbol(user_currency)
