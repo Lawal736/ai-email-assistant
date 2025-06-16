@@ -373,39 +373,55 @@ def pricing():
 def dashboard():
     """Dashboard page"""
     user_id = session.get('user_id')
+    print(f"🔍 Dashboard - User ID: {user_id}")
+    
     user = user_model.get_user_by_id(user_id) if user_model else None
     if user:
         session['subscription_plan'] = user.get('subscription_plan', 'free')
         session['subscription_status'] = user.get('subscription_status', 'inactive')
         session['subscription_expires'] = user.get('subscription_expires')
+    
     # Check if Gmail service is available
     if not gmail_service:
+        print("❌ Gmail service not available")
         flash('Gmail service is not available. Please check your configuration.', 'error')
         return redirect(url_for('index'))
     
     # Check if Gmail is authenticated for this user
     gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    print(f"🔍 Gmail token from database: {'Found' if gmail_token else 'Not found'}")
     
     if not gmail_token:
+        print("❌ No Gmail token found in database")
         flash('Please connect your Gmail account first', 'warning')
         return redirect(url_for('connect_gmail'))
     
     # Set Gmail token for service
     try:
         if gmail_token:
+            print("🔍 Setting Gmail credentials from token")
             gmail_service.set_credentials_from_token(gmail_token)
+            print("✅ Gmail credentials set successfully")
     except Exception as e:
+        print(f"❌ Error setting Gmail credentials: {e}")
         flash('Gmail token expired. Please reconnect your account.', 'warning')
         return redirect(url_for('connect_gmail'))
     
     # Check if Gmail is authenticated
-    if not gmail_service.is_authenticated():
+    is_authenticated = gmail_service.is_authenticated()
+    print(f"🔍 Gmail service is_authenticated(): {is_authenticated}")
+    
+    if not is_authenticated:
+        print("❌ Gmail service reports not authenticated")
         flash('Please connect your Gmail account first', 'warning')
         return redirect(url_for('connect_gmail'))
     
     # Ensure session variable is set if Gmail is authenticated
     if gmail_service.is_authenticated() and not session.get('gmail_authenticated'):
         session['gmail_authenticated'] = True
+        print("✅ Set gmail_authenticated in session")
+    
+    print("✅ Gmail authentication check passed, proceeding to load emails")
     
     try:
         # Get only 10 most recent emails for immediate display
