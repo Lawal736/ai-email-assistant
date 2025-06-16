@@ -20,8 +20,12 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
 
 # Configure session for production vs development
-if os.environ.get('K_SERVICE') or os.environ.get('CLOUD_RUN_SERVICE'):
-    # Production environment (Cloud Run)
+if (
+    os.environ.get('K_SERVICE') or
+    os.environ.get('CLOUD_RUN_SERVICE') or
+    os.environ.get('DIGITALOCEAN_APP_PLATFORM')
+):
+    # Production environment (Cloud Run or Digital Ocean)
     app.config.update(
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
