@@ -1508,7 +1508,6 @@ function viewEmail(emailId) {
 function generateResponse(emailId) {
     currentEmailId = emailId;
     new bootstrap.Modal(document.getElementById('responseModal')).show();
-    
     // Show loading
     document.getElementById('responseContent').innerHTML = `
         <div class="loading">
@@ -1516,23 +1515,44 @@ function generateResponse(emailId) {
             <p class="mt-2">Generating response...</p>
         </div>
     `;
-    
-    // This would call the AI service to generate a response
-    // For now, we'll show a placeholder
-    setTimeout(() => {
+    // Call backend API to generate response
+    fetch('/api/generate-response', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email_id: emailId }),
+        credentials: 'include'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('responseContent').innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-magic me-2"></i>
+                    AI-generated response ready!
+                </div>
+                <div class="bg-light p-3 rounded">
+                    ${formatEmailContent(data.response)}
+                </div>
+            `;
+        } else {
+            document.getElementById('responseContent').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${data.error || 'Failed to generate response.'}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
         document.getElementById('responseContent').innerHTML = `
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                AI response generation feature will be implemented with the backend API.
-            </div>
-            <div class="bg-light p-3 rounded">
-                <p>Dear [Sender],</p>
-                <p>Thank you for your email regarding [subject]. I appreciate you reaching out.</p>
-                <p>[AI-generated response content would appear here]</p>
-                <p>Best regards,<br>[Your name]</p>
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> Failed to generate response. Please try again.
             </div>
         `;
-    }, 2000);
+    });
 }
 
 function generateResponseFromModal() {

@@ -3214,6 +3214,48 @@ def database_stats_endpoint():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/generate-response', methods=['POST'])
+@login_required
+def api_generate_response():
+    """API endpoint to generate an AI response for a given email"""
+    import traceback
+    user_id = session.get('user_id')
+    data = request.get_json()
+    email_id = data.get('email_id')
+    if not email_id:
+        return jsonify({'success': False, 'error': 'Email ID is required'}), 400
+    try:
+        # Check Gmail authentication
+        gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+        if not gmail_token:
+            return jsonify({'success': False, 'error': 'Gmail not connected'}), 401
+        gmail_service.set_credentials_from_token(gmail_token)
+        if not gmail_service.is_authenticated():
+            return jsonify({'success': False, 'error': 'Gmail authentication expired'}), 401
+        # Fetch the email
+        service = gmail_service._get_service()
+        email_data = service.users().messages().get(
+            userId='me',
+            id=email_id,
+            format='full'
+        ).execute()
+        parsed_email = gmail_service._parse_email(email_data)
+        if not parsed_email:
+            return jsonify({'success': False, 'error': 'Email not found'}), 404
+        email_content = parsed_email.get('body', '')
+        subject = parsed_email.get('subject', '')
+        sender = parsed_email.get('sender', '')
+        # Generate AI response
+        response_result = ai_service.generate_response_recommendations(email_content, subject, sender)
+        if response_result.get('success'):
+            return jsonify({'success': True, 'response': response_result['content'], 'model_used': response_result.get('model_used', 'unknown')})
+        else:
+            return jsonify({'success': False, 'error': response_result.get('error', 'Failed to generate response')}), 500
+    except Exception as e:
+        print(f"❌ Exception in /api/generate-response: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port) 
