@@ -858,7 +858,6 @@ def payment_checkout():
     
     print(f"🔍 [DEBUG] Using currency: {user_currency}")
     
-    from currency_service import currency_service
     # Convert plan to user's currency (same as pricing page)
     converted_plan = currency_service.convert_plan_prices([plan], user_currency)[0]
     price = converted_plan['price_monthly'] if billing_period == 'monthly' else converted_plan['price_yearly']
@@ -896,7 +895,6 @@ def payment_process():
         print(f"🔍 [DEBUG] Using currency for Paystack: {user_currency}")
         
         # Always fallback to NGN for Paystack if not set or not supported
-        from currency_service import currency_service
         if not currency_service.is_paystack_supported(user_currency):
             print(f"⚠️ [DEBUG] Currency {user_currency} not supported by Paystack, forcing NGN")
             user_currency = 'NGN'
