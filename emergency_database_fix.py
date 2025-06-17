@@ -218,6 +218,58 @@ def test_token_persistence():
         print(f"❌ Token persistence test failed: {e}")
         return False
 
+def ensure_user_tokens_table(db_path):
+    """Ensure user_tokens table exists - critical fix for production"""
+    print("🔧 [EMERGENCY] Ensuring user_tokens table exists...")
+    
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_tokens'")
+        exists = cursor.fetchone()
+        
+        if exists:
+            print("✅ [EMERGENCY] user_tokens table already exists")
+        else:
+            print("⚠️ [EMERGENCY] user_tokens table missing - creating now...")
+            
+            # Create the robust token storage table
+            cursor.execute('''
+                CREATE TABLE user_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token_data TEXT NOT NULL,
+                    gmail_email TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    UNIQUE(user_id)
+                )
+            ''')
+            
+            # Create trigger for timestamp updates
+            cursor.execute('''
+                CREATE TRIGGER update_token_timestamp 
+                AFTER UPDATE ON user_tokens
+                BEGIN
+                    UPDATE user_tokens SET updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = NEW.id;
+                END
+            ''')
+            
+            print("✅ [EMERGENCY] user_tokens table created successfully")
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"❌ [EMERGENCY] Failed to create user_tokens table: {e}")
+        return False
+
 if __name__ == '__main__':
     print("🚨 EMERGENCY DATABASE REPAIR UTILITY")
     print("=" * 50)
@@ -228,6 +280,12 @@ if __name__ == '__main__':
     else:
         print("\n❌ PHASE 1: Emergency repair failed")
         exit(1)
+    
+    # Step 1.5: Ensure critical tables (new fix)
+    if ensure_user_tokens_table('users.db'):
+        print("\n🔧 PHASE 1.5: Critical tables ensured")
+    else:
+        print("\n❌ PHASE 1.5: Critical table creation failed")
     
     # Step 2: Create robust storage
     if create_robust_token_table():
