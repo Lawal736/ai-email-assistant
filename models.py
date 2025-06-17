@@ -1184,6 +1184,68 @@ class User:
         
         return True
 
+    def count_users(self):
+        """Return total number of users"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
+    def get_users_paginated(self, offset=0, limit=20):
+        """Return paginated list of users"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, email, first_name, last_name, subscription_plan, subscription_status, created_at, last_login
+            FROM users WHERE is_active = 1
+            ORDER BY id ASC
+            LIMIT ? OFFSET ?
+        ''', (limit, offset))
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'id': row[0],
+                'email': row[1],
+                'first_name': row[2],
+                'last_name': row[3],
+                'subscription_plan': row[4],
+                'subscription_status': row[5],
+                'created_at': row[6],
+                'last_login': row[7]
+            })
+        conn.close()
+        return users
+
+    def search_users(self, query):
+        """Search users by email, first name, or last name (case-insensitive, partial match)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        like_query = f"%{query.lower()}%"
+        cursor.execute('''
+            SELECT id, email, first_name, last_name, subscription_plan, subscription_status, created_at, last_login
+            FROM users WHERE is_active = 1 AND (
+                LOWER(email) LIKE ? OR LOWER(first_name) LIKE ? OR LOWER(last_name) LIKE ?
+            )
+            ORDER BY id ASC
+            LIMIT 50
+        ''', (like_query, like_query, like_query))
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'id': row[0],
+                'email': row[1],
+                'first_name': row[2],
+                'last_name': row[3],
+                'subscription_plan': row[4],
+                'subscription_status': row[5],
+                'created_at': row[6],
+                'last_login': row[7]
+            })
+        conn.close()
+        return users
+
 class SubscriptionPlan:
     """Subscription plan model"""
     

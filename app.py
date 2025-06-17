@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
 from functools import wraps
@@ -206,6 +206,14 @@ def subscription_required(plan_name='free'):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('user_id') or not session.get('is_admin', False):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Authentication routes
 @app.route('/login', methods=['GET', 'POST'])
@@ -3338,6 +3346,42 @@ def api_generate_response():
                 'traceback': traceback.format_exc()
             }
         }), 500
+
+@app.route('/admin/user-count')
+@admin_required
+def admin_user_count():
+    """Return total number of users"""
+    count = user_model.count_users() if user_model else 0
+    return jsonify({'user_count': count})
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    """Paginated list of users"""
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+    users = user_model.get_users_paginated(offset, per_page) if user_model else []
+    return jsonify({'users': users, 'page': page, 'per_page': per_page})
+
+@app.route('/admin/search-users')
+@admin_required
+def admin_search_users():
+    """Search users by name or email"""
+    query = request.args.get('query', '').strip()
+    if not query:
+        return jsonify({'error': 'Query required'}), 400
+    users = user_model.search_users(query) if user_model else []
+    return jsonify({'results': users, 'query': query})
+
+@app.route('/admin/user/<int:user_id>')
+@admin_required
+def admin_user_detail(user_id):
+    """Get details for a specific user"""
+    user = user_model.get_user_by_id(user_id) if user_model else None
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    return jsonify({'user': user})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
