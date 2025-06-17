@@ -1276,6 +1276,70 @@ def admin_find_payments(user_id):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/manual-activate-pro/<int:user_id>')
+def admin_manual_activate_pro(user_id):
+    """Emergency admin endpoint to manually activate Pro subscription"""
+    try:
+        print(f"🔧 EMERGENCY: Manually activating Pro for user {user_id}...")
+        
+        # Get user details
+        user = user_model.get_user_by_id(user_id)
+        if not user:
+            return jsonify({'error': f'User {user_id} not found'}), 404
+        
+        # Calculate subscription end date (30 days)
+        end_date = datetime.now() + timedelta(days=30)
+        
+        # Create a temporary payment record
+        try:
+            payment_id = payment_service.payment_model.create_payment_record(
+                user_id=user_id,
+                stripe_payment_intent_id=f'manual_fix_{int(datetime.now().timestamp())}',
+                amount=15439.35,  # Pro monthly price in NGN
+                plan_name='pro',
+                billing_period='monthly',
+                status='completed',
+                currency='NGN',
+                payment_method='manual_admin_fix'
+            )
+            print(f"✅ Created manual payment record with ID: {payment_id}")
+        except Exception as e:
+            print(f"⚠️ Payment record creation failed: {e}")
+        
+        # Update subscription
+        success = user_model.update_subscription(
+            user_id=user_id,
+            plan_name='pro',
+            stripe_customer_id=f'manual_fix_{user_id}',
+            expires_at=end_date
+        )
+        
+        if success:
+            # Update session if this is the current user
+            if session.get('user_id') == user_id:
+                updated_user = user_model.get_user_by_id(user_id)
+                session['subscription_plan'] = 'pro'
+                session['subscription_status'] = 'active'
+                session['subscription_expires'] = updated_user.get('subscription_expires')
+                print(f"✅ Updated session data for current user")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Pro subscription manually activated for user {user_id}',
+                'user_email': user['email'],
+                'plan_activated': 'pro',
+                'expires_at': end_date.isoformat(),
+                'note': 'This is a manual fix - payment verification will be done separately'
+            })
+        else:
+            return jsonify({'error': 'Failed to activate subscription'}), 500
+            
+    except Exception as e:
+        print(f"❌ Admin manual activation error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/admin/process-payment/<reference>')
 def admin_process_payment(reference):
     """Admin endpoint to manually process a Paystack payment"""
