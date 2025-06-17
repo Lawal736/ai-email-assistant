@@ -312,40 +312,48 @@ class User:
                 # Use explicit transaction to ensure atomicity
                 cursor.execute('BEGIN IMMEDIATE')
                 
-                # Update with explicit transaction control
+                # 1. Update legacy users table
                 cursor.execute('''
                     UPDATE users 
                     SET gmail_token = ?, gmail_email = ?, last_login = CURRENT_TIMESTAMP 
                     WHERE id = ?
                 ''', (token_data, gmail_email, user_id))
                 
-                rows_affected = cursor.rowcount
-                print(f"🔍 [DEBUG] Rows affected by update: {rows_affected}")
+                legacy_rows = cursor.rowcount
+                print(f"🔍 [DEBUG] Legacy table rows affected: {legacy_rows}")
                 
-                if rows_affected == 0:
-                    print(f"⚠️ [DEBUG] No rows affected - user may have been deleted (attempt {attempt + 1})")
-                    cursor.execute('ROLLBACK')
-                    conn.close()
-                    if attempt < max_retries - 1:
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                        continue
-                    else:
-                        return False
+                # 2. Update robust user_tokens table
+                cursor.execute('''
+                    INSERT OR REPLACE INTO user_tokens (user_id, token_data, gmail_email, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (user_id, token_data, gmail_email))
+                
+                robust_rows = cursor.rowcount
+                print(f"🔍 [DEBUG] Robust table rows affected: {robust_rows}")
                 
                 # Commit the transaction
                 cursor.execute('COMMIT')
                 
-                # Immediately verify the update worked
-                cursor.execute('SELECT gmail_token, gmail_email FROM users WHERE id = ?', (user_id,))
-                verification = cursor.fetchone()
+                # Dual verification - check both storage locations
+                cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
+                legacy_verification = cursor.fetchone()
                 
-                if verification and verification[0] == token_data:
-                    print(f"✅ [DEBUG] Token update verified successfully (attempt {attempt + 1})")
+                cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = ?', (user_id,))
+                robust_verification = cursor.fetchone()
+                
+                legacy_ok = legacy_verification and legacy_verification[0] == token_data
+                robust_ok = robust_verification and robust_verification[0] == token_data
+                
+                if robust_ok:
+                    print(f"✅ [DEBUG] Robust token storage verified (attempt {attempt + 1})")
+                    if legacy_ok:
+                        print(f"✅ [DEBUG] Legacy storage also verified")
+                    else:
+                        print(f"⚠️ [DEBUG] Legacy storage failed but robust succeeded")
                     conn.close()
                     return True
                 else:
-                    print(f"❌ [DEBUG] Token verification failed after update (attempt {attempt + 1})")
+                    print(f"❌ [DEBUG] Token verification failed - Legacy OK: {legacy_ok}, Robust OK: {robust_ok}")
                     conn.close()
                     if attempt < max_retries - 1:
                         time.sleep(retry_delay)
@@ -416,25 +424,52 @@ class User:
                 
                 print(f"✅ [DEBUG] User {user_id} found: {user_check[1]} (attempt {attempt + 1})")
                 
-                # Now get the token
+                # Try dual storage - robust first, then legacy
+                cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = ? AND is_active = 1', (user_id,))
+                robust_result = cursor.fetchone()
+                
                 cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
-                result = cursor.fetchone()
+                legacy_result = cursor.fetchone()
+                
                 conn.close()
                 
-                token_found = result[0] if result else None
-                print(f"🔍 [DEBUG] Token found: {'Yes' if token_found else 'No'} (attempt {attempt + 1})")
-                if token_found:
-                    print(f"🔍 [DEBUG] Token length: {len(str(token_found))}")
-                    return token_found
-                elif attempt == max_retries - 1:
-                    # On final attempt, log the complete database state
-                    self.check_database_state(user_id)
-                    return None
+                robust_token = robust_result[0] if robust_result else None
+                legacy_token = legacy_result[0] if legacy_result else None
+                
+                # Prefer robust storage
+                if robust_token:
+                    print(f"🔍 [DEBUG] Token found in ROBUST storage: Yes (attempt {attempt + 1})")
+                    print(f"🔍 [DEBUG] Token length: {len(str(robust_token))}")
+                    return robust_token
+                elif legacy_token:
+                    print(f"🔍 [DEBUG] Token found in LEGACY storage: Yes (attempt {attempt + 1})")
+                    print(f"🔍 [DEBUG] Token length: {len(str(legacy_token))}")
+                    # Migrate to robust storage
+                    try:
+                        conn_migrate = self.db_manager.get_connection()
+                        cursor_migrate = conn_migrate.cursor()
+                        cursor_migrate.execute('''
+                            INSERT OR REPLACE INTO user_tokens (user_id, token_data, gmail_email, updated_at)
+                            SELECT id, gmail_token, gmail_email, CURRENT_TIMESTAMP 
+                            FROM users WHERE id = ?
+                        ''', (user_id,))
+                        conn_migrate.commit()
+                        conn_migrate.close()
+                        print(f"🔄 [DEBUG] Migrated token from legacy to robust storage")
+                    except Exception as e:
+                        print(f"⚠️ [DEBUG] Failed to migrate token: {e}")
+                    return legacy_token
                 else:
-                    # Retry with delay
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
+                    print(f"🔍 [DEBUG] Token found: No in both storages (attempt {attempt + 1})")
+                    if attempt == max_retries - 1:
+                        # On final attempt, log the complete database state
+                        self.check_database_state(user_id)
+                        return None
+                    else:
+                        # Retry with delay
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
                 
             except sqlite3.OperationalError as e:
                 if 'conn' in locals():
