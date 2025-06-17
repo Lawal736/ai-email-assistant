@@ -981,6 +981,37 @@ def payment_cancel():
     """Payment cancel page"""
     return render_template('payment/cancel.html')
 
+@app.route('/webhooks/paystack', methods=['POST'])
+def paystack_webhook():
+    """Handle Paystack webhook events for automatic payment processing"""
+    try:
+        print("🔍 [WEBHOOK] Paystack webhook received")
+        
+        # Get the raw payload
+        payload = request.get_json()
+        
+        # Get the signature from headers
+        signature = request.headers.get('x-paystack-signature')
+        
+        print(f"🔍 [WEBHOOK] Event: {payload.get('event')}")
+        print(f"🔍 [WEBHOOK] Data: {payload.get('data', {}).get('reference')}")
+        
+        # Process the webhook
+        result = payment_service.handle_webhook(payload, signature)
+        
+        if result.get('success'):
+            print(f"✅ [WEBHOOK] Successfully processed: {result.get('message')}")
+            return jsonify({'status': 'success'}), 200
+        else:
+            print(f"❌ [WEBHOOK] Failed to process: {result.get('error')}")
+            return jsonify({'status': 'error', 'message': result.get('error')}), 400
+            
+    except Exception as e:
+        print(f"❌ [WEBHOOK] Webhook processing error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/payment/verify/<reference>')
 @login_required
 def verify_payment_manual(reference):
@@ -1056,6 +1087,128 @@ def admin_retry_failed_payments():
         
     except Exception as e:
         print(f"❌ Admin retry error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/check-missed-payments')
+def admin_check_missed_payments():
+    """Admin endpoint to check for missed payments by querying Paystack directly"""
+    try:
+        print("🔍 Admin: Checking for missed payments...")
+        
+        # Get all users
+        conn = user_model.db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, email FROM users WHERE subscription_plan = %s', ('free',))
+        free_users = cursor.fetchall()
+        conn.close()
+        
+        missed_payments = []
+        fixed_count = 0
+        
+        for user_id, email in free_users:
+            print(f"🔍 Checking {email} for missed payments...")
+            
+            # Check Paystack for recent successful payments
+            paystack_secret = os.getenv('PAYSTACK_SECRET_KEY')
+            if not paystack_secret:
+                continue
+                
+            headers = {
+                'Authorization': f'Bearer {paystack_secret}',
+                'Content-Type': 'application/json'
+            }
+            
+            # Get recent transactions for this customer
+            url = 'https://api.paystack.co/transaction'
+            params = {
+                'customer': email,
+                'status': 'success',
+                'perPage': 5
+            }
+            
+            try:
+                response = requests.get(url, headers=headers, params=params)
+                if response.status_code == 200:
+                    data = response.json()
+                    transactions = data.get('data', [])
+                    
+                    for txn in transactions:
+                        reference = txn.get('reference', '')
+                        amount = float(txn.get('amount', 0)) / 100
+                        
+                        # Check if this payment exists in our database
+                        existing_payment = payment_service.payment_model.get_payment_by_reference(reference)
+                        
+                        if not existing_payment and amount >= 5000:  # Pro or Enterprise payment
+                            print(f"🔍 Found missed payment: {reference} for {email}")
+                            
+                            # Determine plan from amount
+                            if amount >= 15000:
+                                plan_name = 'enterprise'
+                            elif amount >= 5000:
+                                plan_name = 'pro'
+                            else:
+                                continue
+                            
+                            # Process the missed payment
+                            try:
+                                # Create payment record
+                                payment_service.payment_model.create_payment_record(
+                                    user_id=user_id,
+                                    stripe_payment_intent_id=reference,
+                                    amount=amount,
+                                    plan_name=plan_name,
+                                    billing_period='monthly',
+                                    status='completed',
+                                    currency='NGN',
+                                    payment_method='paystack'
+                                )
+                                
+                                # Activate subscription
+                                end_date = datetime.now() + timedelta(days=30)
+                                success = user_model.update_subscription(
+                                    user_id=user_id,
+                                    plan_name=plan_name,
+                                    stripe_customer_id=reference,
+                                    expires_at=end_date
+                                )
+                                
+                                if success:
+                                    missed_payments.append({
+                                        'email': email,
+                                        'reference': reference,
+                                        'amount': amount,
+                                        'plan': plan_name,
+                                        'status': 'fixed'
+                                    })
+                                    fixed_count += 1
+                                    print(f"✅ Fixed missed payment for {email}")
+                                
+                            except Exception as e:
+                                print(f"❌ Failed to fix payment {reference}: {e}")
+                                missed_payments.append({
+                                    'email': email,
+                                    'reference': reference,
+                                    'amount': amount,
+                                    'plan': plan_name,
+                                    'status': 'failed',
+                                    'error': str(e)
+                                })
+                                
+            except Exception as e:
+                print(f"❌ Error checking Paystack for {email}: {e}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Missed payment check complete: {fixed_count} payments fixed',
+            'fixed_count': fixed_count,
+            'missed_payments': missed_payments
+        })
+        
+    except Exception as e:
+        print(f"❌ Admin missed payments error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/verify-payment/<reference>')
