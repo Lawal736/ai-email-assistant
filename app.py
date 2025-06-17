@@ -1748,7 +1748,7 @@ def account():
             'subscription_plan': 'free',
             'subscription_status': 'inactive',
             'api_usage_count': 0,
-            'monthly_usage_limit': 50,  # Free plan limit - will be updated below
+            'monthly_usage_limit': 100,  # Free plan limit - will be updated below
             'created_at': None,
             'last_login': None,
             'gmail_email': None
@@ -1759,7 +1759,7 @@ def account():
         user.setdefault('subscription_plan', 'free')
         user.setdefault('subscription_status', 'inactive')
     
-    # Get the user's actual plan quota dynamically
+    # Get the user's actual plan quota dynamically and update usage count
     if plan_model:
         user_plan_data = plan_model.get_plan_by_name(user.get('subscription_plan', 'free'))
         if user_plan_data:
@@ -1768,11 +1768,17 @@ def account():
         else:
             # Fallback to free plan if plan not found
             free_plan = plan_model.get_plan_by_name('free')
-            user['monthly_usage_limit'] = free_plan['email_limit'] if free_plan else 50
+            user['monthly_usage_limit'] = free_plan['email_limit'] if free_plan else 100
             print(f"⚠️ Plan not found, using free plan quota: {user['monthly_usage_limit']}")
+        
+        # Get actual unique emails processed this month for accurate usage display
+        if user_model:
+            unique_emails_count = user_model.get_unique_emails_processed_this_month(user_id)
+            user['api_usage_count'] = unique_emails_count
+            print(f"📊 Account page: Updated usage count to {unique_emails_count} unique emails")
     else:
         # Final fallback if plan_model not available
-        user['monthly_usage_limit'] = 50
+        user['monthly_usage_limit'] = 100
         print(f"⚠️ Plan model not available, using fallback quota: {user['monthly_usage_limit']}")
     
     payments = payment_model.get_user_payments(user_id) if payment_model else []
@@ -1979,9 +1985,11 @@ def api_emails():
         emails = gmail_service.get_todays_emails(user_plan=user_plan)
         processed_emails = email_processor.process_emails(emails)
         
-        # Track usage
-        if user_model:
-            user_model.increment_usage(user_id, 'email_fetch', len(emails))
+        # Track usage for unique emails only
+        if user_model and emails:
+            email_ids = [email.get('id', '') for email in emails if email.get('id')]
+            unique_count = user_model.increment_usage_for_unique_emails(user_id, 'email_fetch', email_ids)
+            print(f"📊 Email fetch: processed {unique_count} unique emails out of {len(emails)} total")
         
         return jsonify(processed_emails)
     except Exception as e:
@@ -2019,9 +2027,11 @@ def api_summary():
         
         summary_result = ai_service.generate_daily_summary(processed_emails)
         
-        # Track usage
-        if user_model:
-            user_model.increment_usage(user_id, 'ai_summary', len(emails))
+        # Track usage for unique emails only
+        if user_model and emails:
+            email_ids = [email.get('id', '') for email in emails if email.get('id')]
+            unique_count = user_model.increment_usage_for_unique_emails(user_id, 'ai_summary', email_ids)
+            print(f"📊 AI summary: processed {unique_count} unique emails out of {len(emails)} total")
         
         if summary_result['success']:
             return jsonify({
@@ -2235,9 +2245,10 @@ Upgrade to Pro for detailed AI analysis including:
                 'technical_error': str(ai_error) if user_plan != 'free' else None
             }), 500
         
-        # Track usage for free users
-        if user_model and user_plan == 'free':
-            user_model.increment_usage(user_id, 'email_analysis', 1)
+        # Track usage for unique emails only (all plans)
+        if user_model:
+            unique_count = user_model.increment_usage_for_unique_emails(user_id, 'email_analysis', [email_id])
+            print(f"📊 Email analysis: processed {unique_count} unique email (ID: {email_id})")
         
         if analysis_result and analysis_result.get('success'):
             return jsonify({
@@ -2360,9 +2371,11 @@ def api_process_emails():
                 print(f"Error processing email {email.get('id')}: {e}")
                 continue
         
-        # Track usage
-        if user_model:
-            user_model.increment_usage(user_id, 'comprehensive_analysis', len(important_emails))
+        # Track usage for unique emails only
+        if user_model and important_emails:
+            email_ids = [email.get('id', '') for email in important_emails if email.get('id')]
+            unique_count = user_model.increment_usage_for_unique_emails(user_id, 'comprehensive_analysis', email_ids)
+            print(f"📊 Comprehensive analysis: processed {unique_count} unique emails out of {len(important_emails)} total")
         
         return jsonify({
             'summary': daily_summary,

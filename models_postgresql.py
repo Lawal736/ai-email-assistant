@@ -59,12 +59,12 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS user_tokens (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES users(id) UNIQUE,
+                    user_id INTEGER NOT NULL UNIQUE,
                     token_data TEXT NOT NULL,
-                    gmail_email VARCHAR(255),
+                    gmail_email TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT TRUE
+                    FOREIGN KEY (user_id) REFERENCES users (id)
                 )
             ''')
             
@@ -82,17 +82,6 @@ class DatabaseManager:
                     is_active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            ''')
-            
-            # Insert default subscription plans
-            cursor.execute('''
-                INSERT INTO subscription_plans 
-                (name, price_monthly, price_yearly, email_limit, features, stripe_price_id_monthly, stripe_price_id_yearly)
-                VALUES 
-                            ('free', 0.00, 0.00, 50, 'Basic email analysis, Daily summaries, Action items, Email limit: 50/month', NULL, NULL),
-            ('pro', 19.99, 199.99, 1000, 'Advanced AI analysis, Unlimited summaries, Priority support, Email limit: 1,000/month, Document analysis, Thread analysis', NULL, NULL),
-            ('enterprise', 49.99, 499.99, 10000, 'Enterprise-grade AI, Unlimited everything, 24/7 support, Email limit: 10,000/month, Advanced analytics, Custom integrations, Team management', NULL, NULL)
-                ON CONFLICT (name) DO NOTHING
             ''')
             
             # User preferences table for currency and other settings
@@ -145,12 +134,44 @@ class DatabaseManager:
                 )
             ''')
             
+            # Create processed_emails table for unique email tracking
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS processed_emails (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    email_id TEXT NOT NULL,
+                    email_hash TEXT NOT NULL,
+                    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    month_year TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    UNIQUE(user_id, email_id, month_year, action_type)
+                )
+            ''')
+            
+            # Create index for faster lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_processed_emails_lookup 
+                ON processed_emails(user_id, month_year, action_type)
+            ''')
+            
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_payment_records_user_id ON payment_records(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_tracking_user_id ON usage_tracking(user_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token)')
+            
+            # Insert default subscription plans if they don't exist
+            cursor.execute('''
+                    INSERT INTO subscription_plans 
+                      (name, price_monthly, price_yearly, email_limit, features, stripe_price_id_monthly, stripe_price_id_yearly)
+                      VALUES 
+                               ('free', 0.00, 0.00, 100, 'Basic email analysis, Daily AI-generated summaries, Action items extraction, Email limit: 100/month', NULL, NULL),
+                ('pro', 19.99, 199.99, 500, 'Everything in Free plus Advanced AI analysis, Document processing, Priority support, Custom insights, Email limit: 500/month', NULL, NULL),
+                ('enterprise', 49.99, 499.99, 2000, 'Everything in Pro plus Unlimited AI-powered analysis, Team collaboration, API access, Custom integrations, Email limit: 2,000/month', NULL, NULL)
+                    ON CONFLICT (name) DO NOTHING
+             ''')
             
             conn.commit()
             print("✅ PostgreSQL database initialized successfully")
@@ -540,22 +561,12 @@ class User:
             return False
 
     def increment_usage(self, user_id, action_type, email_count=1):
-        """Increment user's API usage"""
+        """Track usage with backward compatibility"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
         try:
-            # Add usage record (create table if it doesn't exist)
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS usage_tracking (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES users(id),
-                    action_type VARCHAR(100) NOT NULL,
-                    email_count INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
+            # Legacy usage tracking (for backwards compatibility)
             cursor.execute('''
                 INSERT INTO usage_tracking (user_id, action_type, email_count)
                 VALUES (%s, %s, %s)
@@ -572,22 +583,111 @@ class User:
         finally:
             conn.close()
 
+    def increment_usage_for_unique_emails(self, user_id, action_type, email_ids):
+        """Track usage for unique emails only - each email counted once per month"""
+        if not email_ids:
+            return 0
+            
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get current month-year
+            from datetime import datetime
+            current_month = datetime.now().strftime('%Y-%m')
+            
+            new_emails_count = 0
+            
+            for email_id in email_ids:
+                # Create a hash of the email content for deduplication
+                import hashlib
+                email_hash = hashlib.md5(f"{email_id}_{action_type}".encode()).hexdigest()
+                
+                try:
+                    # Try to insert the email as processed
+                    cursor.execute('''
+                        INSERT INTO processed_emails (user_id, email_id, email_hash, month_year, action_type)
+                        VALUES (%s, %s, %s, %s, %s)
+                    ''', (user_id, email_id, email_hash, current_month, action_type))
+                    
+                    # If successful, this is a new unique email
+                    new_emails_count += 1
+                    
+                except psycopg2.IntegrityError:
+                    # Email already processed this month for this action type
+                    conn.rollback()
+                    continue
+            
+            if new_emails_count > 0:
+                # Legacy usage tracking (for backwards compatibility) 
+                cursor.execute('''
+                    INSERT INTO usage_tracking (user_id, action_type, email_count)
+                    VALUES (%s, %s, %s)
+                ''', (user_id, action_type, new_emails_count))
+                
+                # Update user's usage count with only new emails
+                cursor.execute('''
+                    UPDATE users 
+                    SET api_usage_count = COALESCE(api_usage_count, 0) + %s
+                    WHERE id = %s
+                ''', (new_emails_count, user_id))
+                
+                print(f"✅ Tracked {new_emails_count} new unique emails for user {user_id} ({action_type})")
+            else:
+                print(f"📊 No new unique emails to track for user {user_id} ({action_type}) - all already processed this month")
+            
+            conn.commit()
+            return new_emails_count
+            
+        finally:
+            conn.close()
+
+    def get_unique_emails_processed_this_month(self, user_id, action_type=None):
+        """Get count of unique emails processed this month"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            from datetime import datetime
+            current_month = datetime.now().strftime('%Y-%m')
+            
+            if action_type:
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT email_id) 
+                    FROM processed_emails 
+                    WHERE user_id = %s AND month_year = %s AND action_type = %s
+                ''', (user_id, current_month, action_type))
+            else:
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT email_id) 
+                    FROM processed_emails 
+                    WHERE user_id = %s AND month_year = %s
+                ''', (user_id, current_month))
+            
+            result = cursor.fetchone()
+            return result[0] if result else 0
+            
+        finally:
+            conn.close()
+
     def check_usage_limit(self, user_id):
-        """Check if user has exceeded their usage limit"""
+        """Check if user has exceeded their usage limit using unique emails processed this month"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute('''
-                SELECT api_usage_count, subscription_plan
+                SELECT subscription_plan
                 FROM users WHERE id = %s
             ''', (user_id,))
             
             result = cursor.fetchone()
             
             if result:
-                usage_count, plan = result
-                usage_count = usage_count or 0  # Handle NULL values
+                plan = result[0]
+                
+                # Get actual unique emails processed this month
+                unique_emails_count = self.get_unique_emails_processed_this_month(user_id)
                 
                 # Get dynamic limit from subscription plan
                 from models_postgresql import SubscriptionPlan
@@ -601,15 +701,17 @@ class User:
                 else:
                     # Fallback to free plan limit
                     free_plan = plan_model.get_plan_by_name('free')
-                    limit = free_plan['email_limit'] if free_plan else 50
+                    limit = free_plan['email_limit'] if free_plan else 100
                     print(f"⚠️ Plan '{plan}' not found, using free plan limit: {limit}")
                 
+                print(f"📊 Unique emails processed this month: {unique_emails_count}/{limit}")
+                
                 return {
-                    'usage_count': usage_count,
+                    'usage_count': unique_emails_count,
                     'limit': limit,
                     'plan': plan,
-                    'remaining': max(0, limit - usage_count),
-                    'exceeded': usage_count >= limit
+                    'remaining': max(0, limit - unique_emails_count),
+                    'exceeded': unique_emails_count >= limit
                 }
             return None
         finally:

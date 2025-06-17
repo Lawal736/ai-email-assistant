@@ -342,41 +342,40 @@ def create_database():
                 'name': 'free',
                 'price_monthly': 0.0,
                 'price_yearly': 0.0,
-                'email_limit': 50,
+                'email_limit': 100,
                 'features': [
-                    'Basic email analysis',
-                    'Daily summaries',
-                    'Action item extraction',
-                    'Email limit: 50/month'
+                    'Basic email analysis (summarizes and highlights key points)',
+                    'Daily AI-generated summaries of your inbox',
+                    'Action items extraction from emails',
+                    'Email limit: 100/month'
                 ]
             },
             {
                 'name': 'pro',
                 'price_monthly': 19.99,
                 'price_yearly': 199.99,
-                'email_limit': 1000,
+                'email_limit': 500,
                 'features': [
-                    'Advanced AI analysis',
-                    'Unlimited summaries',
-                    'Priority support',
-                    'Email limit: 1,000/month',
-                    'Document analysis',
-                    'Thread analysis'
+                    'Everything in Free, plus:',
+                    'Advanced AI analysis (deeper insights, context understanding)',
+                    'Document processing (analyze attachments and documents)',
+                    'Priority support (faster response times)',
+                    'Custom insights tailored to your workflow',
+                    'Email limit: 500/month'
                 ]
             },
             {
                 'name': 'enterprise',
                 'price_monthly': 49.99,
                 'price_yearly': 499.99,
-                'email_limit': 10000,
+                'email_limit': 2000,
                 'features': [
-                    'Enterprise-grade AI',
-                    'Unlimited everything',
-                    '24/7 support',
-                    'Email limit: 10,000/month',
-                    'Advanced analytics',
-                    'Custom integrations',
-                    'Team management'
+                    'Everything in Pro, plus:',
+                    'Unlimited AI-powered email analysis',
+                    'Team collaboration tools (shared insights, team dashboards)',
+                    'API access for custom integrations with your business tools',
+                    'Custom integrations and onboarding support',
+                    'Email limit: 2,000/month'
                 ]
             }
         ]

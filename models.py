@@ -28,17 +28,11 @@ class DatabaseManager:
         self.init_database()
     
     def init_database(self):
-        """Initialize database with required tables"""
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        """Initialize database with all required tables"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Enable WAL mode for better concurrency
-        cursor.execute('PRAGMA journal_mode=WAL')
-        cursor.execute('PRAGMA synchronous=NORMAL')
-        cursor.execute('PRAGMA cache_size=10000')
-        cursor.execute('PRAGMA temp_store=MEMORY')
-        
-        # Users table
+        # Create users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,21 +40,21 @@ class DatabaseManager:
                 password_hash TEXT NOT NULL,
                 first_name TEXT,
                 last_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
-                is_active BOOLEAN DEFAULT 1,
-                gmail_token TEXT,
-                gmail_email TEXT,
                 subscription_plan TEXT DEFAULT 'free',
                 subscription_status TEXT DEFAULT 'active',
-                subscription_expires TIMESTAMP,
+                subscription_expires DATETIME,
                 stripe_customer_id TEXT,
+                gmail_token TEXT,
+                gmail_email TEXT,
                 api_usage_count INTEGER DEFAULT 0,
-                monthly_usage_limit INTEGER DEFAULT 100
+                monthly_usage_limit INTEGER DEFAULT 100,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_login DATETIME,
+                is_active BOOLEAN DEFAULT 1
             )
         ''')
         
-        # Subscription plans table
+        # Create subscription_plans table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscription_plans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,104 +65,100 @@ class DatabaseManager:
                 features TEXT,
                 stripe_price_id_monthly TEXT,
                 stripe_price_id_yearly TEXT,
-                is_active BOOLEAN DEFAULT 1
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Payment records table
+        # Create payment_records table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS payment_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
-                stripe_payment_intent_id TEXT,
+                stripe_payment_intent_id TEXT UNIQUE,
                 amount DECIMAL(10,2) NOT NULL,
                 currency TEXT DEFAULT 'usd',
-                status TEXT NOT NULL,
                 plan_name TEXT NOT NULL,
                 billing_period TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
                 payment_method TEXT DEFAULT 'card',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
         
-        # Usage tracking table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS usage_tracking (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                action_type TEXT NOT NULL,
-                email_count INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Password reset tokens table
+        # Create password_reset_tokens table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 token TEXT UNIQUE NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
+                expires_at DATETIME NOT NULL,
                 used BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
         
-        # User preferences table
+        # Create usage_tracking table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_preferences (
+            CREATE TABLE IF NOT EXISTS usage_tracking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
-                currency TEXT DEFAULT 'USD',
-                timezone TEXT DEFAULT 'UTC',
-                language TEXT DEFAULT 'en',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                UNIQUE(user_id)
+                action_type TEXT NOT NULL,
+                email_count INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
         
-        # Robust token storage table
+        # Create user_tokens table for robust token storage
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL UNIQUE,
                 token_data TEXT NOT NULL,
                 gmail_email TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT 1,
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                UNIQUE(user_id)
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
-        
-        # Create trigger to update timestamp
+
+        # Create processed_emails table for unique email tracking
         cursor.execute('''
-            CREATE TRIGGER IF NOT EXISTS update_token_timestamp 
-            AFTER UPDATE ON user_tokens
-            BEGIN
-                UPDATE user_tokens SET updated_at = CURRENT_TIMESTAMP 
-                WHERE id = NEW.id;
-            END
+            CREATE TABLE IF NOT EXISTS processed_emails (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                email_id TEXT NOT NULL,
+                email_hash TEXT NOT NULL,
+                processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                month_year TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                UNIQUE(user_id, email_id, month_year, action_type)
+            )
+        ''')
+
+        # Create index for faster lookups
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_processed_emails_lookup 
+            ON processed_emails(user_id, month_year, action_type)
         ''')
         
-        # Insert default subscription plans
+        # Insert default subscription plans if they don't exist
         cursor.execute('''
-            INSERT OR IGNORE INTO subscription_plans 
-            (name, price_monthly, price_yearly, email_limit, features, stripe_price_id_monthly, stripe_price_id_yearly)
-            VALUES 
-            ('free', 0.00, 0.00, 50, 'Basic email analysis, Daily summaries, Action items, Email limit: 50/month', NULL, NULL),
-            ('pro', 19.99, 199.99, 1000, 'Advanced AI analysis, Unlimited summaries, Priority support, Email limit: 1,000/month, Document analysis, Thread analysis', NULL, NULL),
-            ('enterprise', 49.99, 499.99, 10000, 'Enterprise-grade AI, Unlimited everything, 24/7 support, Email limit: 10,000/month, Advanced analytics, Custom integrations, Team management', NULL, NULL)
-        ''')
+          INSERT OR IGNORE INTO subscription_plans 
+          (name, price_monthly, price_yearly, email_limit, features, stripe_price_id_monthly, stripe_price_id_yearly)
+          VALUES 
+             ('free', 0.00, 0.00, 100, 'Basic email analysis, Daily AI-generated summaries, Action items extraction, Email limit: 100/month', NULL, NULL),
+             ('pro', 19.99, 199.99, 500, 'Everything in Free plus Advanced AI analysis, Document processing, Priority support, Custom insights, Email limit: 500/month', NULL, NULL),
+             ('enterprise', 49.99, 499.99, 2000, 'Everything in Pro plus Unlimited AI-powered analysis, Team collaboration, API access, Custom integrations, Email limit: 2,000/month', NULL, NULL)
+          ''')
         
         conn.commit()
         conn.close()
+        print("Database initialized with all tables including unique email tracking")
     
     def get_connection(self):
         """Get database connection with proper timeout and retry logic"""
@@ -650,11 +640,11 @@ class User:
             return False
     
     def increment_usage(self, user_id, action_type, email_count=1):
-        """Increment user's API usage"""
+        """Track usage with backward compatibility"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
-        # Add usage record
+        # Legacy usage tracking (for backwards compatibility)
         cursor.execute('''
             INSERT INTO usage_tracking (user_id, action_type, email_count)
             VALUES (?, ?, ?)
@@ -669,14 +659,96 @@ class User:
         
         conn.commit()
         conn.close()
+
+    def increment_usage_for_unique_emails(self, user_id, action_type, email_ids):
+        """Track usage for unique emails only - each email counted once per month"""
+        if not email_ids:
+            return 0
+            
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        # Get current month-year
+        from datetime import datetime
+        current_month = datetime.now().strftime('%Y-%m')
+        
+        new_emails_count = 0
+        
+        for email_id in email_ids:
+            # Create a hash of the email content for deduplication
+            import hashlib
+            email_hash = hashlib.md5(f"{email_id}_{action_type}".encode()).hexdigest()
+            
+            try:
+                # Try to insert the email as processed
+                cursor.execute('''
+                    INSERT INTO processed_emails (user_id, email_id, email_hash, month_year, action_type)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (user_id, email_id, email_hash, current_month, action_type))
+                
+                # If successful, this is a new unique email
+                new_emails_count += 1
+                
+            except sqlite3.IntegrityError:
+                # Email already processed this month for this action type
+                pass
+        
+        if new_emails_count > 0:
+            # Legacy usage tracking (for backwards compatibility) 
+            cursor.execute('''
+                INSERT INTO usage_tracking (user_id, action_type, email_count)
+                VALUES (?, ?, ?)
+            ''', (user_id, action_type, new_emails_count))
+            
+            # Update user's usage count with only new emails
+            cursor.execute('''
+                UPDATE users 
+                SET api_usage_count = api_usage_count + ?
+                WHERE id = ?
+            ''', (new_emails_count, user_id))
+            
+            print(f"✅ Tracked {new_emails_count} new unique emails for user {user_id} ({action_type})")
+        else:
+            print(f"📊 No new unique emails to track for user {user_id} ({action_type}) - all already processed this month")
+        
+        conn.commit()
+        conn.close()
+        
+        return new_emails_count
+
+    def get_unique_emails_processed_this_month(self, user_id, action_type=None):
+        """Get count of unique emails processed this month"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        from datetime import datetime
+        current_month = datetime.now().strftime('%Y-%m')
+        
+        if action_type:
+            cursor.execute('''
+                SELECT COUNT(DISTINCT email_id) 
+                FROM processed_emails 
+                WHERE user_id = ? AND month_year = ? AND action_type = ?
+            ''', (user_id, current_month, action_type))
+        else:
+            cursor.execute('''
+                SELECT COUNT(DISTINCT email_id) 
+                FROM processed_emails 
+                WHERE user_id = ? AND month_year = ?
+            ''', (user_id, current_month))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result[0] if result else 0
     
     def check_usage_limit(self, user_id):
-        """Check if user has exceeded their usage limit"""
+        """Check if user has exceeded their usage limit using unique emails processed this month"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT api_usage_count, subscription_plan
+            SELECT subscription_plan
             FROM users WHERE id = ?
         ''', (user_id,))
         
@@ -684,8 +756,10 @@ class User:
         conn.close()
         
         if result:
-            usage_count, plan = result
-            usage_count = usage_count or 0  # Handle NULL values
+            plan = result[0]
+            
+            # Get actual unique emails processed this month
+            unique_emails_count = self.get_unique_emails_processed_this_month(user_id)
             
             # Get dynamic limit from subscription plan
             from models import SubscriptionPlan
@@ -699,15 +773,17 @@ class User:
             else:
                 # Fallback to free plan limit
                 free_plan = plan_model.get_plan_by_name('free')
-                limit = free_plan['email_limit'] if free_plan else 50
+                limit = free_plan['email_limit'] if free_plan else 100
                 print(f"⚠️ Plan '{plan}' not found, using free plan limit: {limit}")
             
+            print(f"📊 Unique emails processed this month: {unique_emails_count}/{limit}")
+            
             return {
-                'usage_count': usage_count,
+                'usage_count': unique_emails_count,
                 'limit': limit,
                 'plan': plan,
-                'remaining': max(0, limit - usage_count),
-                'exceeded': usage_count >= limit
+                'remaining': max(0, limit - unique_emails_count),
+                'exceeded': unique_emails_count >= limit
             }
         return None
     
