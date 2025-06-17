@@ -1,5 +1,6 @@
 import os
 import json
+import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_cors import CORS
@@ -1200,6 +1201,190 @@ def admin_fix_subscription(user_id):
             
     except Exception as e:
         print(f"❌ Admin fix subscription error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/find-payments/<int:user_id>')
+def admin_find_payments(user_id):
+    """Admin endpoint to find Paystack payments for a user"""
+    try:
+        print(f"🔍 Admin: Finding Paystack payments for user {user_id}...")
+        
+        # Get user details
+        user = user_model.get_user_by_id(user_id)
+        if not user:
+            return jsonify({'error': f'User {user_id} not found'}), 404
+        
+        user_email = user['email']
+        
+        # Check Paystack for recent payments
+        paystack_secret = os.getenv('PAYSTACK_SECRET_KEY')
+        if not paystack_secret:
+            return jsonify({'error': 'Paystack secret key not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Bearer {paystack_secret}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Get recent transactions for this customer
+        url = 'https://api.paystack.co/transaction'
+        params = {
+            'customer': user_email,
+            'status': 'success',
+            'perPage': 20
+        }
+        
+        response = requests.get(url, headers=headers, params=params)
+        
+        if response.status_code != 200:
+            return jsonify({'error': f'Paystack API error: {response.status_code}'}), 500
+        
+        data = response.json()
+        transactions = data.get('data', [])
+        
+        # Format transactions for display
+        formatted_transactions = []
+        for txn in transactions:
+            amount = float(txn.get('amount', 0)) / 100
+            currency = txn.get('currency', 'NGN')
+            reference = txn.get('reference', '')
+            created_at = txn.get('created_at', '')
+            metadata = txn.get('metadata', {})
+            
+            formatted_transactions.append({
+                'reference': reference,
+                'amount': amount,
+                'currency': currency,
+                'created_at': created_at,
+                'metadata': metadata,
+                'plan_name': metadata.get('plan_name', 'Unknown'),
+                'billing_period': metadata.get('billing_period', 'monthly')
+            })
+        
+        return jsonify({
+            'success': True,
+            'user_email': user_email,
+            'transactions_found': len(formatted_transactions),
+            'transactions': formatted_transactions
+        })
+        
+    except Exception as e:
+        print(f"❌ Admin find payments error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/process-payment/<reference>')
+def admin_process_payment(reference):
+    """Admin endpoint to manually process a Paystack payment"""
+    try:
+        print(f"🔧 Admin: Processing payment {reference}...")
+        
+        # Verify payment with Paystack
+        paystack_secret = os.getenv('PAYSTACK_SECRET_KEY')
+        if not paystack_secret:
+            return jsonify({'error': 'Paystack secret key not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Bearer {paystack_secret}',
+            'Content-Type': 'application/json'
+        }
+        
+        url = f'https://api.paystack.co/transaction/verify/{reference}'
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code != 200:
+            return jsonify({'error': f'Paystack verification failed: {response.status_code}'}), 500
+        
+        verification_result = response.json()
+        
+        if not verification_result.get('status'):
+            return jsonify({'error': 'Payment verification failed'}), 400
+        
+        data = verification_result.get('data', {})
+        if data.get('status') != 'success':
+            return jsonify({'error': f'Payment was not successful: {data.get("status")}'}), 400
+        
+        # Extract payment details
+        amount = float(data.get('amount', 0)) / 100
+        currency = data.get('currency', 'NGN')
+        customer_email = data.get('customer', {}).get('email', '')
+        metadata = data.get('metadata', {})
+        
+        # Find user
+        user_id = metadata.get('user_id')
+        if not user_id:
+            user = user_model.get_user_by_email(customer_email)
+            if user:
+                user_id = user['id']
+            else:
+                return jsonify({'error': f'User not found for email: {customer_email}'}), 404
+        
+        # Determine plan
+        plan_name = metadata.get('plan_name')
+        if not plan_name:
+            if amount >= 15000:
+                plan_name = 'enterprise'
+            elif amount >= 5000:
+                plan_name = 'pro'
+            else:
+                return jsonify({'error': f'Cannot determine plan from amount: {amount}'}), 400
+        
+        billing_period = metadata.get('billing_period', 'monthly')
+        
+        # Check if payment already exists
+        existing_payment = payment_service.payment_model.get_payment_by_reference(reference)
+        if not existing_payment:
+            # Create payment record
+            payment_id = payment_service.payment_model.create_payment_record(
+                user_id=user_id,
+                stripe_payment_intent_id=reference,
+                amount=amount,
+                plan_name=plan_name,
+                billing_period=billing_period,
+                status='completed',
+                currency=currency,
+                payment_method='paystack'
+            )
+        
+        # Activate subscription
+        if billing_period == 'yearly':
+            end_date = datetime.now() + timedelta(days=365)
+        else:
+            end_date = datetime.now() + timedelta(days=30)
+        
+        success = user_model.update_subscription(
+            user_id=user_id,
+            plan_name=plan_name,
+            stripe_customer_id=reference,
+            expires_at=end_date
+        )
+        
+        if success:
+            # Update session if this is the current user
+            if session.get('user_id') == user_id:
+                updated_user = user_model.get_user_by_id(user_id)
+                session['subscription_plan'] = updated_user.get('subscription_plan', 'free')
+                session['subscription_status'] = updated_user.get('subscription_status', 'inactive')
+                session['subscription_expires'] = updated_user.get('subscription_expires')
+            
+            return jsonify({
+                'success': True,
+                'message': f'Payment {reference} processed successfully',
+                'user_id': user_id,
+                'user_email': customer_email,
+                'plan_activated': plan_name,
+                'amount': amount,
+                'currency': currency,
+                'expires_at': end_date.isoformat()
+            })
+        else:
+            return jsonify({'error': 'Failed to activate subscription'}), 500
+            
+    except Exception as e:
+        print(f"❌ Admin process payment error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
