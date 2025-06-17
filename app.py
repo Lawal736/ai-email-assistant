@@ -2049,13 +2049,14 @@ def api_summary():
 @app.route('/api/analyze-email', methods=['POST'])
 @login_required
 def api_analyze_email():
-    """API endpoint to analyze a single email with attachments"""
     import traceback
     user_id = session.get('user_id')
     data = request.get_json()
     debug_info = {}
+    print('STEP 1: Entered /api/analyze-email endpoint')
     try:
         # EMERGENCY: Check if user exists and recover if needed
+        print('STEP 2: Checking user/session integrity')
         if user_model:
             session_data = {
                 'user_email': session.get('user_email'),
@@ -2065,54 +2066,62 @@ def api_analyze_email():
             }
             mismatch_fixed = user_model.check_and_repair_user_session_mismatch(user_id, session_data)
             if not mismatch_fixed:
+                print('STEP 2a: User/session mismatch not fixed')
                 return jsonify({
                     'error': 'Your account data was corrupted. Please log in again.',
                     'requires_login': True
                 }), 401
-        # Get user subscription info
+        print('STEP 3: Getting user subscription info')
         user = user_model.get_user_by_id(user_id) if user_model else None
         user_plan = user.get('subscription_plan', 'free') if user else 'free'
-        # Check if this is a thread analysis request
+        print(f'STEP 3a: user_plan={user_plan}')
         analysis_type = data.get('type', 'summary')
         is_thread_analysis = analysis_type == 'thread_analysis'
-        # Allow basic thread analysis for free users, but require Pro for advanced analysis
+        print(f'STEP 4: analysis_type={analysis_type}, is_thread_analysis={is_thread_analysis}')
         if not is_thread_analysis and user_plan == 'free':
+            print('STEP 4a: Free user, advanced analysis blocked')
             return jsonify({
                 'error': 'Advanced AI analysis requires a Pro subscription. Thread viewing is available for free users.',
                 'requires_upgrade': True,
                 'feature': 'Advanced AI Analysis'
             }), 403
-        # Check usage limits for free users
         if user_plan == 'free':
+            print('STEP 5: Checking usage limits for free user')
             usage_info = user_model.check_usage_limit(user_id) if user_model else None
             if usage_info and usage_info['exceeded']:
+                print('STEP 5a: Usage limit exceeded')
                 return jsonify({
                     'error': 'Monthly usage limit exceeded. Please upgrade to Pro for unlimited analysis.',
                     'requires_upgrade': True,
                     'feature': 'Usage Limit'
                 }), 429
-        # Check Gmail authentication
+        print('STEP 6: Checking Gmail authentication')
         gmail_token = user_model.get_gmail_token(user_id) if user_model else None
         if not gmail_token:
+            print('STEP 6a: Gmail not connected')
             return jsonify({'error': 'Gmail not connected. Please connect your Gmail account first.'}), 401
-        # Set Gmail token
+        print('STEP 7: Setting Gmail credentials')
         gmail_service.set_credentials_from_token(gmail_token)
         if not gmail_service.is_authenticated():
+            print('STEP 7a: Gmail authentication expired')
             return jsonify({'error': 'Gmail authentication expired. Please reconnect your Gmail account.'}), 401
         email_id = data.get('email_id')
         if not email_id:
+            print('STEP 8: Email ID missing')
             return jsonify({'error': 'Email ID is required'}), 400
-        # Get the full email with attachments
+        print(f'STEP 9: Fetching email {email_id}')
         service = gmail_service._get_service()
         email_data = service.users().messages().get(
             userId='me',
             id=email_id,
             format='full'
         ).execute()
+        print('STEP 10: Parsing email')
         parsed_email = gmail_service._parse_email(email_data)
         if not parsed_email:
+            print('STEP 10a: Email not found or could not be parsed')
             return jsonify({'error': 'Email not found or could not be parsed'}), 404
-        # Process email with attachments if available (Pro feature)
+        print('STEP 11: Processing email (attachments if Pro)')
         try:
             if user_plan != 'free' and email_processor and document_processor and gmail_service:
                 processed_email = email_processor.process_email_with_attachments(parsed_email)
@@ -2124,11 +2133,10 @@ def api_analyze_email():
             print(f"⚠️ Email processing error: {processing_error}")
             print(debug_info['processing_traceback'])
             processed_email = parsed_email
-        # Prepare content for AI analysis
+        print('STEP 12: Preparing content for AI analysis')
         email_content = processed_email.get('body', '')
         subject = processed_email.get('subject', '')
         sender = processed_email.get('sender', '')
-        # Clean and validate content to prevent pattern matching errors
         try:
             if email_content:
                 import re
@@ -2148,11 +2156,10 @@ def api_analyze_email():
             email_content = str(processed_email.get('body', ''))[:1000]
             subject = str(processed_email.get('subject', ''))[:200]
             sender = str(processed_email.get('sender', ''))[:100]
-        # Include attachment analysis if available (Pro feature only)
+        print('STEP 13: Checking for attachment analysis')
         attachment_analysis = processed_email.get('attachment_analysis', '')
         if attachment_analysis and user_plan != 'free':
             email_content += f"\n\nAttachment Analysis:\n{attachment_analysis}"
-        # Enhanced content validation with fallback
         if not email_content.strip():
             snippet = processed_email.get('snippet', '')
             if snippet.strip():
@@ -2164,18 +2171,14 @@ def api_analyze_email():
                     print(f"🔍 Using subject/sender as fallback content")
                 else:
                     debug_info['content_error'] = 'Email content could not be extracted and no fallback information is available'
+                    print('STEP 14: Email content could not be extracted and no fallback info')
                     return jsonify({
                         'error': 'Email content could not be extracted and no fallback information is available',
                         'suggestion': 'This email may have an unsupported format. Try opening it in Gmail directly.',
                         'debug': debug_info
                     }), 400
-        # Generate analysis based on type
+        print('STEP 15: Calling AI analysis')
         try:
-            print(f"🔍 Starting AI analysis for type: {analysis_type} (user plan: {user_plan})")
-            print(f"🔍 Email content length: {len(email_content)}")
-            print(f"🔍 Subject: {subject}")
-            print(f"🔍 Sender: {sender}")
-            # For thread analysis, provide a simpler analysis for free users
             if is_thread_analysis and user_plan == 'free':
                 analysis_result = {
                     'success': True,
@@ -2202,8 +2205,9 @@ Upgrade to Pro for detailed AI analysis including:
                     'model_used': 'basic'
                 }
             else:
-                # Full AI analysis for Pro users or other analysis types
+                print('STEP 15a: Calling ai_service.analyze_email')
                 analysis_result = ai_service.analyze_email(email_content, analysis_type)
+            print('STEP 16: AI analysis call completed')
         except Exception as ai_error:
             debug_info['ai_error'] = str(ai_error)
             debug_info['ai_traceback'] = traceback.format_exc()
@@ -2214,11 +2218,12 @@ Upgrade to Pro for detailed AI analysis including:
                 'technical_error': str(ai_error) if user_plan != 'free' else None,
                 'debug': debug_info
             }), 500
-        # Track usage for unique emails only (all plans)
+        print('STEP 17: Tracking usage for unique emails')
         if user_model:
             unique_count = user_model.increment_usage_for_unique_emails(user_id, 'email_analysis', [email_id])
             print(f"📊 Email analysis: processed {unique_count} unique email (ID: {email_id})")
         if analysis_result and analysis_result.get('success'):
+            print('STEP 18: Returning successful analysis result')
             return jsonify({
                 'success': True,
                 'content': analysis_result['content'],
@@ -2232,6 +2237,7 @@ Upgrade to Pro for detailed AI analysis including:
             error_msg = analysis_result.get('error', 'Unknown AI analysis error') if analysis_result else 'AI analysis returned no result'
             debug_info['analysis_error'] = error_msg
             print(f"❌ AI analysis failed: {error_msg}")
+            print('STEP 19: Returning failed analysis result')
             return jsonify({
                 'success': False, 
                 'error': 'Analysis could not be completed. Please try again or contact support if the issue persists.',
@@ -2239,11 +2245,11 @@ Upgrade to Pro for detailed AI analysis including:
                 'debug': debug_info
             }), 500
     except Exception as e:
-        import traceback
         error_details = traceback.format_exc()
         print(f"❌ Exception in analyze-email: {str(e)}")
         print(f"❌ Full traceback: {error_details}")
         print(f"❌ Request data: {data}")
+        print('STEP 20: Exception handler reached')
         return jsonify({
             'error': 'Analysis service temporarily unavailable. Please try again later.',
             'technical_error': str(e),
