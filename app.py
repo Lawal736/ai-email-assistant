@@ -230,6 +230,7 @@ def login():
         
         user = user_model.authenticate_user(email, password)
         if user:
+            session.clear()  # Clear any previous session data to prevent leakage
             session['user_id'] = user['id']
             session['user_email'] = user['email']
             session['user_name'] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
