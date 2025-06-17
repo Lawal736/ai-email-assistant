@@ -266,23 +266,45 @@ class CurrencyService:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             
-            # Check if user preference exists
-            cursor.execute('SELECT id FROM user_preferences WHERE user_id = ?', (user_id,))
-            exists = cursor.fetchone()
+            # Detect database type and use appropriate syntax
+            is_postgresql = hasattr(self.db_manager, 'db_config')  # PostgreSQL has db_config
             
-            if exists:
-                # Update existing preference
-                cursor.execute('''
-                    UPDATE user_preferences 
-                    SET currency = ?, updated_at = CURRENT_TIMESTAMP 
-                    WHERE user_id = ?
-                ''', (currency, user_id))
+            if is_postgresql:
+                # PostgreSQL syntax with %s placeholders
+                cursor.execute('SELECT id FROM user_preferences WHERE user_id = %s', (user_id,))
+                exists = cursor.fetchone()
+                
+                if exists:
+                    # Update existing preference
+                    cursor.execute('''
+                        UPDATE user_preferences 
+                        SET currency = %s, updated_at = CURRENT_TIMESTAMP 
+                        WHERE user_id = %s
+                    ''', (currency, user_id))
+                else:
+                    # Create new preference
+                    cursor.execute('''
+                        INSERT INTO user_preferences (user_id, currency, created_at, updated_at)
+                        VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ''', (user_id, currency))
             else:
-                # Create new preference
-                cursor.execute('''
-                    INSERT INTO user_preferences (user_id, currency, created_at, updated_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ''', (user_id, currency))
+                # SQLite syntax with ? placeholders
+                cursor.execute('SELECT id FROM user_preferences WHERE user_id = ?', (user_id,))
+                exists = cursor.fetchone()
+                
+                if exists:
+                    # Update existing preference
+                    cursor.execute('''
+                        UPDATE user_preferences 
+                        SET currency = ?, updated_at = CURRENT_TIMESTAMP 
+                        WHERE user_id = ?
+                    ''', (currency, user_id))
+                else:
+                    # Create new preference
+                    cursor.execute('''
+                        INSERT INTO user_preferences (user_id, currency, created_at, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ''', (user_id, currency))
             
             conn.commit()
             conn.close()
@@ -290,6 +312,8 @@ class CurrencyService:
             
         except Exception as e:
             print(f"⚠️ Failed to save currency preference: {e}")
+            import traceback
+            traceback.print_exc()
     
     def get_user_currency_preference(self, user_id: int) -> str:
         """Get user's saved currency preference"""
@@ -297,16 +321,24 @@ class CurrencyService:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             
-            cursor.execute('SELECT currency FROM user_preferences WHERE user_id = ?', (user_id,))
-            result = cursor.fetchone()
+            # Detect database type and use appropriate syntax
+            is_postgresql = hasattr(self.db_manager, 'db_config')  # PostgreSQL has db_config
             
+            if is_postgresql:
+                cursor.execute('SELECT currency FROM user_preferences WHERE user_id = %s', (user_id,))
+            else:
+                cursor.execute('SELECT currency FROM user_preferences WHERE user_id = ?', (user_id,))
+            
+            result = cursor.fetchone()
             conn.close()
             
             if result:
-                return result[0]
+                return result[0] if isinstance(result, tuple) else result['currency']
             
         except Exception as e:
             print(f"⚠️ Failed to get currency preference: {e}")
+            import traceback
+            traceback.print_exc()
         
         return self.default_currency
 

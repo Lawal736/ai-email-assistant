@@ -382,35 +382,68 @@ def index():
 @app.route('/pricing')
 def pricing():
     """Pricing page"""
-    # Get user's real IP address for currency detection (handle proxies/load balancers)
-    user_ip = get_user_real_ip()
-    
-    print(f"🔍 Pricing - User IP: {user_ip}")
-    
-    # Detect user's currency
-    user_currency = currency_service.detect_user_currency(user_ip)
-    print(f"🌍 Detected currency: {user_currency}")
-    
-    # Get plans from database
-    if plan_model:
-        plans = plan_model.get_all_plans()
-    else:
-        plans = []
-    
-    # Convert plan prices to user's currency
-    converted_plans = currency_service.convert_plan_prices(plans, user_currency)
-    
-    # Get currency info
-    currency_info = currency_service.get_currency_info(user_currency)
-    
-    # Save user's currency preference if logged in
-    if session.get('user_id'):
-        currency_service.save_user_currency_preference(session['user_id'], user_currency)
-    
-    return render_template('pricing.html', 
-                         plans=converted_plans, 
-                         currency_info=currency_info,
-                         user_currency=user_currency)
+    try:
+        # Get user's real IP address for currency detection (handle proxies/load balancers)
+        user_ip = get_user_real_ip()
+        
+        print(f"🔍 Pricing - User IP: {user_ip}")
+        
+        # Detect user's currency
+        user_currency = currency_service.detect_user_currency(user_ip)
+        print(f"🌍 Detected currency: {user_currency}")
+        
+        # Get plans from database
+        if plan_model:
+            plans = plan_model.get_all_plans()
+            print(f"📋 Found {len(plans)} plans")
+        else:
+            plans = []
+            print("⚠️ Plan model not available")
+        
+        # Convert plan prices to user's currency
+        converted_plans = currency_service.convert_plan_prices(plans, user_currency)
+        print(f"💱 Converted {len(converted_plans)} plans to {user_currency}")
+        
+        # Get currency info
+        currency_info = currency_service.get_currency_info(user_currency)
+        
+        # Save user's currency preference if logged in
+        if session.get('user_id'):
+            try:
+                currency_service.save_user_currency_preference(session['user_id'], user_currency)
+                print(f"✅ Saved currency preference for user {session['user_id']}: {user_currency}")
+            except Exception as e:
+                print(f"⚠️ Failed to save currency preference: {e}")
+                # Continue without failing
+        
+        return render_template('pricing.html', 
+                             plans=converted_plans, 
+                             currency_info=currency_info,
+                             user_currency=user_currency)
+                             
+    except Exception as e:
+        print(f"❌ Error in pricing route: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback: show pricing with default currency
+        try:
+            if plan_model:
+                plans = plan_model.get_all_plans()
+            else:
+                plans = []
+            
+            # Use USD as fallback
+            currency_info = currency_service.get_currency_info('USD')
+            
+            return render_template('pricing.html', 
+                                 plans=plans, 
+                                 currency_info=currency_info,
+                                 user_currency='USD')
+        except Exception as fallback_error:
+            print(f"❌ Fallback pricing also failed: {fallback_error}")
+            flash('Unable to load pricing information. Please try again later.', 'error')
+            return redirect(url_for('index'))
 
 @app.route('/dashboard')
 @login_required

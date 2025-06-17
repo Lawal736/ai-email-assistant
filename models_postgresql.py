@@ -95,6 +95,44 @@ class DatabaseManager:
                 ON CONFLICT (name) DO NOTHING
             ''')
             
+            # User preferences table for currency and other settings
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) UNIQUE,
+                    currency VARCHAR(10) DEFAULT 'USD',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Payment records table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS payment_records (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id),
+                    stripe_payment_intent_id VARCHAR(255),
+                    amount DECIMAL(10,2) NOT NULL,
+                    currency VARCHAR(10) DEFAULT 'usd',
+                    plan_name VARCHAR(100),
+                    billing_period VARCHAR(20),
+                    payment_method VARCHAR(50) DEFAULT 'card',
+                    status VARCHAR(50) DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Usage tracking table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS usage_tracking (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id),
+                    action_type VARCHAR(100) NOT NULL,
+                    email_count INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             conn.commit()
             print("✅ PostgreSQL database initialized successfully")
             
