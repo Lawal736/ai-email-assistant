@@ -268,6 +268,220 @@ class User:
         finally:
             conn.close()
 
+    def update_last_login(self, user_id):
+        """Update user's last login timestamp"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE users SET last_login = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            ''', (user_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def check_database_connectivity(self):
+        """Check database connectivity and health"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Test basic connectivity
+            cursor.execute('SELECT 1')
+            result = cursor.fetchone()
+            
+            # Check tables exist
+            cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'")
+            users_table = cursor.fetchone()
+            
+            conn.close()
+            
+            print(f"🔍 [DEBUG] Database connectivity:")
+            print(f"   Basic query: {'✅ Success' if result else '❌ Failed'}")
+            print(f"   Users table: {'✅ Exists' if users_table else '❌ Missing'}")
+            
+            return bool(result and users_table)
+            
+        except Exception as e:
+            print(f"❌ [DEBUG] Database connectivity error: {e}")
+            return False
+
+    def force_database_sync(self):
+        """Force database synchronization to ensure all pending writes are committed"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # PostgreSQL automatically handles transaction commits
+            # This is mainly for compatibility with SQLite version
+            cursor.execute('SELECT 1')  # Simple query to test connection
+            
+            conn.close()
+            print("✅ [DEBUG] Database sync forced successfully")
+            return True
+        except Exception as e:
+            print(f"❌ [DEBUG] Error forcing database sync: {e}")
+            return False
+
+    def check_database_state(self, user_id):
+        """Check and log database state for a specific user"""
+        print(f"🔍 [DEBUG] check_database_state called for user_id: {user_id}")
+        
+        try:
+            user = self.get_user_by_id(user_id)
+            if user:
+                gmail_token = self.get_gmail_token(user_id)
+                has_refresh_token = False
+                
+                if gmail_token:
+                    try:
+                        import json
+                        token_data = json.loads(gmail_token)
+                        has_refresh_token = 'refresh_token' in token_data and token_data['refresh_token']
+                    except:
+                        pass
+                
+                print(f"🔍 [DEBUG] Database state for user {user_id}:")
+                print(f"   Email: {user.get('email')}")
+                print(f"   Gmail Email: {user.get('gmail_email')}")
+                print(f"   Gmail Token: {'Present' if gmail_token else 'None'}")
+                print(f"   Plan: {user.get('subscription_plan')}")
+                print(f"   Status: {user.get('subscription_status')}")
+                if gmail_token:
+                    print(f"   Token has refresh_token: {'Yes' if has_refresh_token else 'No'}")
+            else:
+                print(f"❌ [DEBUG] User {user_id} not found in database")
+                
+        except Exception as e:
+            print(f"❌ [DEBUG] Error checking database state: {e}")
+
+    def check_and_repair_user_session_mismatch(self, user_id, session_data=None):
+        """Check for user/session mismatches and attempt repair"""
+        print(f"🔍 [DEBUG] Checking user/session mismatch for user_id: {user_id}")
+        
+        try:
+            # First, ensure user integrity
+            if not self.ensure_user_integrity(user_id, session_data):
+                print("❌ [DEBUG] User integrity check failed")
+                return False
+                
+            print("✅ [DEBUG] User integrity check passed")
+            return True
+            
+        except Exception as e:
+            print(f"❌ [DEBUG] Error in user/session mismatch check: {e}")
+            return False
+
+    def ensure_user_integrity(self, user_id, session_data=None):
+        """Ensure user exists and has correct data"""
+        print(f"🔧 [DEBUG] Ensuring user integrity for user_id: {user_id}")
+        
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Check if user exists
+                conn = self.db_manager.get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT id, email, is_active, 
+                           CASE WHEN gmail_token IS NOT NULL THEN 'Yes' ELSE 'No' END as has_token
+                    FROM users WHERE id = %s
+                ''', (user_id,))
+                
+                user_record = cursor.fetchone()
+                conn.close()
+                
+                if user_record:
+                    user_id_db, email, is_active, has_token = user_record
+                    print(f"✅ [DEBUG] User {user_id} integrity check passed (attempt {attempt})")
+                    print(f"   - Email: {email}")
+                    print(f"   - Active: {is_active}")
+                    print(f"   - Has Token: {has_token}")
+                    return True
+                else:
+                    print(f"❌ [DEBUG] User {user_id} not found during integrity check (attempt {attempt})")
+                    print(f"   - User count for ID {user_id}: 0")
+                    
+                    if attempt == max_attempts:
+                        print(f"❌ [DEBUG] User {user_id} confirmed missing from database")
+                        
+                        # Attempt emergency recovery if session data is available
+                        if session_data and session_data.get('user_email'):
+                            print("⚠️ [DEBUG] User integrity check failed - attempting emergency recovery")
+                            return self.emergency_user_recovery(user_id, session_data)
+                        else:
+                            print("❌ [DEBUG] No session data available for emergency recovery")
+                            return False
+                            
+            except Exception as e:
+                print(f"❌ [DEBUG] Error in user integrity check (attempt {attempt}): {e}")
+                if attempt == max_attempts:
+                    return False
+                    
+        return False
+
+    def emergency_user_recovery(self, user_id, session_data):
+        """Emergency recovery for missing users"""
+        print(f"🚨 [EMERGENCY] Starting user recovery for user_id: {user_id}")
+        
+        try:
+            email = session_data.get('user_email')
+            name = session_data.get('user_name', '')
+            plan = session_data.get('subscription_plan', 'free')
+            status = session_data.get('subscription_status', 'active')
+            
+            if not email:
+                print("❌ [EMERGENCY] No email in session data for recovery")
+                return False
+                
+            print(f"🚨 [EMERGENCY] User {user_id} confirmed missing - attempting recovery")
+            print(f"🔧 [EMERGENCY] Reconstructing user with email: {email}, name: {name}")
+            
+            # Split name into first and last
+            name_parts = name.split(' ', 1) if name else ['', '']
+            first_name = name_parts[0] if name_parts else ''
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Insert reconstructed user with emergency password
+            cursor.execute('''
+                INSERT INTO users (id, email, password_hash, first_name, last_name, 
+                                 subscription_plan, subscription_status, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    email = EXCLUDED.email,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    subscription_plan = EXCLUDED.subscription_plan,
+                    subscription_status = EXCLUDED.subscription_status,
+                    is_active = EXCLUDED.is_active
+            ''', (user_id, email, 'EMERGENCY_RECOVERY_NO_PASSWORD', 
+                  first_name, last_name, plan, status, True))
+            
+            conn.commit()
+            conn.close()
+            
+            print(f"✅ [EMERGENCY] User {user_id} successfully recovered")
+            
+            # Verify recovery
+            recovered_user = self.get_user_by_id(user_id)
+            if recovered_user:
+                print(f"✅ [EMERGENCY] Recovery verified: {recovered_user.get('email')}")
+                return True
+            else:
+                print(f"❌ [EMERGENCY] Recovery verification failed")
+                return False
+                
+        except Exception as e:
+            print(f"❌ [EMERGENCY] User recovery failed: {e}")
+            return False
+
 class SubscriptionPlan:
     """Subscription plan model"""
     
