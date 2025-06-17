@@ -378,8 +378,15 @@ def reset_password(token):
 # Main routes
 @app.route('/')
 def index():
-    """Main page"""
     return render_template('index.html')
+
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
 
 @app.route('/pricing')
 def pricing():
