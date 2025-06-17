@@ -72,19 +72,58 @@ CORS(app)
 
 # Initialize database and services
 try:
-    db_manager = DatabaseManager()
-    user_model = User(db_manager)
-    plan_model = SubscriptionPlan(db_manager)
-    payment_model = PaymentRecord(db_manager)
+    # Check if we should use PostgreSQL
+    database_type = os.getenv('DATABASE_TYPE', 'sqlite').lower()
+    
+    if database_type == 'postgresql':
+        # Import PostgreSQL models
+        from models_postgresql import DatabaseManager as PGDatabaseManager, User as PGUser, SubscriptionPlan as PGSubscriptionPlan, PaymentRecord as PGPaymentRecord
+        
+        # Use PostgreSQL configuration
+        pg_config = {
+            'host': os.getenv('DB_HOST'),
+            'port': int(os.getenv('DB_PORT', 25060)),
+            'user': os.getenv('DB_USER'),
+            'password': os.getenv('DB_PASSWORD'),
+            'database': os.getenv('DB_NAME'),
+            'sslmode': os.getenv('DB_SSLMODE', 'require')
+        }
+        
+        print(f"🔧 Using PostgreSQL database: {pg_config['host']}:{pg_config['port']}")
+        
+        db_manager = PGDatabaseManager(pg_config)
+        user_model = PGUser(db_manager)
+        plan_model = PGSubscriptionPlan(db_manager)
+        payment_model = PGPaymentRecord(db_manager)
+    else:
+        # Use SQLite (default)
+        print("🔧 Using SQLite database")
+        db_manager = DatabaseManager()
+        user_model = User(db_manager)
+        plan_model = SubscriptionPlan(db_manager)
+        payment_model = PaymentRecord(db_manager)
+    
     payment_service = PaymentService()
     print("✅ Database and payment services initialized")
 except Exception as e:
     print(f"⚠️ Database initialization failed: {e}")
-    db_manager = None
-    user_model = None
-    plan_model = None
-    payment_model = None
-    payment_service = None
+    print(f"   Error details: {type(e).__name__}: {e}")
+    # Fallback to SQLite if PostgreSQL fails
+    try:
+        print("🔄 Falling back to SQLite...")
+        db_manager = DatabaseManager()
+        user_model = User(db_manager)
+        plan_model = SubscriptionPlan(db_manager)
+        payment_model = PaymentRecord(db_manager)
+        payment_service = PaymentService()
+        print("✅ SQLite fallback successful")
+    except Exception as fallback_error:
+        print(f"❌ SQLite fallback also failed: {fallback_error}")
+        db_manager = None
+        user_model = None
+        plan_model = None
+        payment_model = None
+        payment_service = None
 
 # Initialize Gmail and AI services
 try:

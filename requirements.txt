@@ -31,6 +31,9 @@ lxml==4.9.3
 # Authentication and security
 bcrypt==4.1.2
 
+# Database support
+psycopg2-binary==2.9.9
+
 # Web3 dependencies for crypto payments
 web3>=6.0.0
 eth-account>=0.13.6
