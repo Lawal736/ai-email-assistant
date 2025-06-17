@@ -696,26 +696,82 @@
     /* Responsive improvements */
     @media (max-width: 768px) {
         .dashboard-header {
-            padding: 24px;
-            margin-bottom: 24px;
-        }
-        
-        .stats-card {
-            padding: 20px;
+            padding: 16px 8px;
             margin-bottom: 16px;
         }
-        
+        .stats-card {
+            padding: 12px;
+            margin-bottom: 12px;
+        }
         .stats-number {
-            font-size: 2rem;
+            font-size: 1.5rem;
         }
-        
         .modal-body {
-            padding: 20px;
+            padding: 10px;
         }
-        
         .table-responsive {
-            border-radius: 16px;
-            overflow: hidden;
+            border-radius: 10px;
+            overflow-x: auto;
+        }
+        .card-header, .card-body {
+            padding: 12px 8px;
+        }
+        .summary-card h4, .card h4, .card h5 {
+            font-size: 1.1rem;
+        }
+        .btn, .btn-group-sm > .btn {
+            font-size: 0.95rem;
+            padding: 8px 12px;
+        }
+        .email-card td, .email-card th {
+            padding: 6px 4px;
+            font-size: 0.95rem;
+        }
+        .action-item, .recommendation {
+            font-size: 0.95rem;
+        }
+    }
+    /* Extra small devices (phones, <576px) */
+    @media (max-width: 576px) {
+        .dashboard-header {
+            flex-direction: column;
+            text-align: center;
+        }
+        .stats-card {
+            margin-bottom: 8px;
+            padding: 8px;
+        }
+        .row, .col-lg-8, .col-lg-4, .col-lg-6, .col-12, .col-md-6, .col-md-4, .col-md-3, .col-4 {
+            flex-direction: column !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        .card {
+            margin-bottom: 10px;
+        }
+        .table-responsive {
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        .table {
+            font-size: 0.92rem;
+        }
+        .btn, .btn-group-sm > .btn {
+            font-size: 1rem;
+            padding: 10px 16px;
+        }
+        .modal-dialog {
+            max-width: 98vw;
+            margin: 0 auto;
+        }
+        .modal-content {
+            border-radius: 10px;
+        }
+        .summary-card h4, .card h4, .card h5 {
+            font-size: 1rem;
+        }
+        .email-content {
+            font-size: 0.92rem;
         }
     }
 
