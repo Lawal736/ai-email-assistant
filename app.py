@@ -2203,7 +2203,7 @@ Upgrade to Pro for detailed AI analysis including:
                 }
             else:
                 # Full AI analysis for Pro users or other analysis types
-                analysis_result = ai_service.analyze_email(email_content, subject, sender, user_plan, analysis_type)
+                analysis_result = ai_service.analyze_email(email_content, analysis_type)
         except Exception as ai_error:
             debug_info['ai_error'] = str(ai_error)
             debug_info['ai_traceback'] = traceback.format_exc()
