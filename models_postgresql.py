@@ -950,13 +950,32 @@ class User:
         conn.close()
 
     def delete_gmail_token(self, user_id):
-        """Delete user's Gmail token from both user_tokens and users tables (PostgreSQL)"""
+        """Delete user's Gmail token from both user_tokens and users tables (PostgreSQL) with debug logging"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         try:
+            print(f"[DEBUG] Attempting to delete Gmail token for user_id: {user_id}")
+            # Log current state
+            cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = %s', (user_id,))
+            before_token = cursor.fetchone()
+            cursor.execute('SELECT gmail_token FROM users WHERE id = %s', (user_id,))
+            before_legacy = cursor.fetchone()
+            print(f"[DEBUG] Before delete - user_tokens: {before_token}, users.gmail_token: {before_legacy}")
+
             cursor.execute('DELETE FROM user_tokens WHERE user_id = %s', (user_id,))
             cursor.execute('UPDATE users SET gmail_token = NULL WHERE id = %s', (user_id,))
             conn.commit()
+
+            # Log after state
+            cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = %s', (user_id,))
+            after_token = cursor.fetchone()
+            cursor.execute('SELECT gmail_token FROM users WHERE id = %s', (user_id,))
+            after_legacy = cursor.fetchone()
+            print(f"[DEBUG] After delete - user_tokens: {after_token}, users.gmail_token: {after_legacy}")
+        except Exception as e:
+            print(f"[ERROR] Exception in delete_gmail_token: {e}")
+            conn.rollback()
+            raise
         finally:
             conn.close()
         return True

@@ -809,11 +809,15 @@ def api_disconnect_gmail():
             os.remove(token_path)
             print(f"✅ Gmail token file removed: {token_path}")
         
+        print(f"[DEBUG] /api/disconnect-gmail called for user_id: {user_id}")
+        print(f"[DEBUG] Session info: {{'gmail_authenticated': {session.get('gmail_authenticated')}, 'gmail_email': {session.get('gmail_email')}}}")
         # Remove Gmail token and email from database
         if user_model:
+            print(f"[DEBUG] Calling delete_gmail_token for user_id: {user_id}")
             user_model.delete_gmail_token(user_id)
+            print(f"[DEBUG] Finished delete_gmail_token for user_id: {user_id}")
             user_model.set_gmail_email(user_id, None)
-            print(f"✅ Gmail token and email removed for user {user_id}")
+            print(f"[DEBUG] Gmail token and email removed for user {user_id}")
         # Clear Gmail authentication from session
         session.pop('gmail_authenticated', None)
         session.pop('gmail_email', None)
