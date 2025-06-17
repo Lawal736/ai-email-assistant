@@ -42,34 +42,96 @@ class CurrencyService:
         self.update_exchange_rates()
     
     def detect_user_currency(self, ip_address: str = None) -> str:
-        """Detect user's currency based on IP address"""
+        """Detect user's currency based on IP address with enhanced Nigerian detection"""
         try:
-            # Use a free IP geolocation service
-            if ip_address and ip_address != '127.0.0.1':
-                response = requests.get(f'http://ip-api.com/json/{ip_address}?fields=countryCode,currency', timeout=5)
+            # Handle local development and proxy scenarios
+            if not ip_address or ip_address in ['127.0.0.1', 'localhost', None]:
+                # For local development, try to get real IP
+                try:
+                    response = requests.get('http://ip-api.com/json/?fields=countryCode,currency,country', timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        country_code = data.get('countryCode', '').upper()
+                        
+                        # Enhanced Nigerian detection
+                        if country_code == 'NG':
+                            print(f"🇳🇬 Nigerian IP detected, enforcing NGN currency")
+                            return 'NGN'
+                        
+                        currency = data.get('currency', 'USD')
+                        if currency in self.supported_currencies:
+                            print(f"🌍 Auto-detected currency: {currency} for country: {country_code}")
+                            return currency
+                except:
+                    pass
+            else:
+                # Use provided IP address for detection
+                response = requests.get(f'http://ip-api.com/json/{ip_address}?fields=countryCode,currency,country', timeout=5)
                 if response.status_code == 200:
                     data = response.json()
-                    currency = data.get('currency', 'USD')
+                    country_code = data.get('countryCode', '').upper()
+                    country_name = data.get('country', '')
                     
-                    # Check if currency is supported
-                    if currency in self.supported_currencies:
-                        return currency
-            
-            # Fallback: try to get IP from request
-            try:
-                response = requests.get('http://ip-api.com/json/?fields=countryCode,currency', timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    currency = data.get('currency', 'USD')
+                    print(f"🔍 IP Detection: {ip_address} -> {country_name} ({country_code})")
                     
+                    # Enhanced Nigerian detection with multiple checks
+                    if (country_code == 'NG' or 
+                        'nigeria' in country_name.lower() or 
+                        country_code in ['NG', 'NGA']):
+                        print(f"🇳🇬 Nigerian user detected, enforcing NGN currency")
+                        return 'NGN'
+                    
+                    # Enhanced country-to-currency mapping
+                    country_currency_map = {
+                        'NG': 'NGN',  # Nigeria
+                        'GH': 'GHS',  # Ghana
+                        'KE': 'KES',  # Kenya
+                        'ZA': 'ZAR',  # South Africa
+                        'UG': 'UGX',  # Uganda
+                        'TZ': 'TZS',  # Tanzania
+                        'ZM': 'ZMW',  # Zambia
+                        'BJ': 'XOF',  # Benin (West African CFA)
+                        'BF': 'XOF',  # Burkina Faso
+                        'CI': 'XOF',  # Côte d'Ivoire
+                        'GW': 'XOF',  # Guinea-Bissau
+                        'ML': 'XOF',  # Mali
+                        'NE': 'XOF',  # Niger
+                        'SN': 'XOF',  # Senegal
+                        'TG': 'XOF',  # Togo
+                        'CM': 'XAF',  # Cameroon (Central African CFA)
+                        'CF': 'XAF',  # Central African Republic
+                        'TD': 'XAF',  # Chad
+                        'CG': 'XAF',  # Republic of the Congo
+                        'GQ': 'XAF',  # Equatorial Guinea
+                        'GA': 'XAF',  # Gabon
+                        'US': 'USD',  # United States
+                        'GB': 'GBP',  # United Kingdom
+                        'CA': 'CAD',  # Canada
+                        'AU': 'AUD',  # Australia
+                        'FR': 'EUR',  # France
+                        'DE': 'EUR',  # Germany
+                        'IT': 'EUR',  # Italy
+                        'ES': 'EUR',  # Spain
+                    }
+                    
+                    # Use country-specific mapping first
+                    if country_code in country_currency_map:
+                        mapped_currency = country_currency_map[country_code]
+                        if mapped_currency in self.supported_currencies:
+                            print(f"🎯 Country mapping: {country_code} -> {mapped_currency}")
+                            return mapped_currency
+                    
+                    # Fallback to API-provided currency
+                    currency = data.get('currency', 'USD')
                     if currency in self.supported_currencies:
+                        print(f"🌍 API currency: {currency}")
                         return currency
-            except:
-                pass
                 
         except Exception as e:
             print(f"⚠️ Currency detection failed: {e}")
         
+        # Ultimate fallback
+        print(f"🔄 Using default currency: {self.default_currency}")
         return self.default_currency
     
     def update_exchange_rates(self):

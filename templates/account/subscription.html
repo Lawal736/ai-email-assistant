@@ -98,18 +98,28 @@
                     <div class="row">
                         {% for plan in plans %}
                         <div class="col-md-4 mb-3">
-                            <div class="card h-100 {{ 'border-primary' if plan.id == user.subscription_plan else '' }}">
+                            <div class="card h-100 {{ 'border-primary' if plan.name == user.subscription_plan else '' }}">
                                 <div class="card-body text-center">
-                                    <h5 class="card-title">{{ plan.name }}</h5>
-                                    <h3 class="text-primary">{{ plan.price_local }}<small class="text-muted">/month</small></h3>
+                                    <h5 class="card-title text-capitalize">{{ plan.name }}</h5>
+                                    <h3 class="text-primary">
+                                        {{ plan.currency_symbol }}{{ plan.price_monthly|int if plan.price_monthly == plan.price_monthly|int else plan.price_monthly }}
+                                        <small class="text-muted">/month</small>
+                                    </h3>
+                                    {% if plan.currency != 'USD' %}
+                                    <small class="text-info d-block mb-2">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        Prices in {{ plan.currency_name }} ({{ plan.currency }})
+                                    </small>
+                                    {% endif %}
+                                    <p class="text-muted small">Up to {{ plan.email_limit }} emails/month</p>
                                     <ul class="list-unstyled">
                                         {% for feature in plan.features %}
-                                        <li><i class="fas fa-check text-success"></i> {{ feature }}</li>
+                                        <li class="mb-1"><i class="fas fa-check text-success me-2"></i> {{ feature }}</li>
                                         {% endfor %}
                                     </ul>
-                                    {% if plan.id != user.subscription_plan %}
-                                    <a href="{{ url_for('pricing') }}?plan={{ plan.id }}" class="btn btn-primary">
-                                        {{ 'Upgrade' if user.subscription_plan else 'Choose Plan' }}
+                                    {% if plan.name != user.subscription_plan %}
+                                    <a href="{{ url_for('pricing') }}?plan={{ plan.name }}" class="btn btn-primary">
+                                        {{ 'Upgrade' if user.subscription_plan and user.subscription_plan != 'free' else 'Choose Plan' }}
                                     </a>
                                     {% else %}
                                     <span class="badge bg-success">Current Plan</span>

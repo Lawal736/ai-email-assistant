@@ -382,11 +382,14 @@ def index():
 @app.route('/pricing')
 def pricing():
     """Pricing page"""
-    # Get user's IP address for currency detection
-    user_ip = request.remote_addr
+    # Get user's real IP address for currency detection (handle proxies/load balancers)
+    user_ip = get_user_real_ip()
+    
+    print(f"🔍 Pricing - User IP: {user_ip}")
     
     # Detect user's currency
     user_currency = currency_service.detect_user_currency(user_ip)
+    print(f"🌍 Detected currency: {user_currency}")
     
     # Get plans from database
     if plan_model:
@@ -753,25 +756,32 @@ def api_disconnect_gmail():
             'error': f'Failed to disconnect Gmail: {str(e)}'
         })
 
-# Helper to ensure session currency is set
+def get_user_real_ip():
+    """Get user's real IP address, handling proxies and load balancers"""
+    user_ip = request.headers.get('X-Forwarded-For', 
+                                 request.headers.get('X-Real-IP', 
+                                                   request.headers.get('CF-Connecting-IP', 
+                                                                     request.remote_addr)))
+    if user_ip and ',' in user_ip:
+        # X-Forwarded-For can contain multiple IPs, take the first one (original client)
+        user_ip = user_ip.split(',')[0].strip()
+    
+    return user_ip
+
 def ensure_session_currency():
-    """Ensure session currency is set for logged-in users"""
-    if session.get('user_id') and not session.get('user_currency'):
-        try:
-            # Try to get from database first
-            user_currency = currency_service.get_user_currency_preference(session['user_id'])
-            if not user_currency:
-                # Fallback to NGN for Paystack compatibility
-                user_currency = 'NGN'
-            session['user_currency'] = user_currency
-            print(f"🔍 [DEBUG] ensure_session_currency: Set to {user_currency}")
-        except Exception as e:
-            print(f"⚠️ [DEBUG] ensure_session_currency error: {e}")
-            session['user_currency'] = 'NGN'
-    elif not session.get('user_currency'):
-        # Set default for non-logged in users
-        session['user_currency'] = 'NGN'
-        print(f"🔍 [DEBUG] ensure_session_currency: Set default to NGN")
+    """Ensure user has currency preference set based on their IP"""
+    if not session.get('user_currency'):
+        user_ip = get_user_real_ip()
+        print(f"🔍 Setting session currency for IP: {user_ip}")
+        
+        detected_currency = currency_service.detect_user_currency(user_ip)
+        session['user_currency'] = detected_currency
+        
+        print(f"🌍 Session currency set to: {detected_currency}")
+        
+        # Save to database if user is logged in
+        if session.get('user_id'):
+            currency_service.save_user_currency_preference(session['user_id'], detected_currency)
 
 # Payment routes
 @app.template_filter('thousands')
@@ -799,8 +809,20 @@ def payment_checkout():
         flash('Plan not found', 'error')
         return redirect(url_for('pricing'))
     
-    # Get user's currency preference
-    user_currency = session.get('user_currency', 'USD')
+    # Get user's currency preference with IP detection fallback
+    user_id = session.get('user_id')
+    user_currency = currency_service.get_user_currency_preference(user_id) if user_id else None
+    
+    if not user_currency:
+        user_ip = get_user_real_ip()
+        user_currency = currency_service.detect_user_currency(user_ip)
+        print(f"🌍 Checkout - IP: {user_ip} -> Currency: {user_currency}")
+        
+        # Save detected currency to session and database
+        session['user_currency'] = user_currency
+        if user_id:
+            currency_service.save_user_currency_preference(user_id, user_currency)
+    
     print(f"🔍 [DEBUG] Using currency: {user_currency}")
     
     from currency_service import currency_service
@@ -1162,21 +1184,36 @@ def account_subscription():
         session['subscription_plan'] = user.get('subscription_plan', 'free')
         session['subscription_status'] = user.get('subscription_status', 'inactive')
         session['subscription_expires'] = user.get('subscription_expires')
+    
     plans = plan_model.get_all_plans() if plan_model else []
     
-    # Get user's currency
-    user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
+    # Ensure currency is detected based on IP
+    ensure_session_currency()
+    
+    # Get user's currency (prioritize saved preference, fallback to IP detection)
+    user_currency = currency_service.get_user_currency_preference(user_id) if user_id else None
+    if not user_currency:
+        user_ip = get_user_real_ip()
+        user_currency = currency_service.detect_user_currency(user_ip)
+        print(f"🌍 Subscription page - IP: {user_ip} -> Currency: {user_currency}")
+    
     currency_symbol = currency_service.get_currency_symbol(user_currency)
-    # Get plan price in user's currency
-    for plan in plans:
-        plan['price_local'] = currency_service.convert_and_format(plan['price_monthly'], 'USD', user_currency)
-        plan['currency_symbol'] = currency_symbol
+    
+    # Convert plan prices to user's currency
+    converted_plans = currency_service.convert_plan_prices(plans, user_currency)
+    
     # Get user's quota for usage display
     plan_quota = None
     if user and user.get('subscription_plan'):
         user_plan = plan_model.get_plan_by_name(user['subscription_plan'])
         plan_quota = user_plan['email_limit'] if user_plan else None
-    return render_template('account/subscription.html', user=user, plans=plans, user_currency=user_currency, currency_symbol=currency_symbol, plan_quota=plan_quota)
+    
+    return render_template('account/subscription.html', 
+                         user=user, 
+                         plans=converted_plans, 
+                         user_currency=user_currency, 
+                         currency_symbol=currency_symbol, 
+                         plan_quota=plan_quota)
 
 @app.route('/account/billing')
 @login_required
@@ -1184,14 +1221,45 @@ def account_billing():
     """Billing history page"""
     user_id = session.get('user_id')
     payments = payment_model.get_user_payments(user_id) if payment_model else []
-    # For each payment, use the actual paid currency and amount
+    
+    # Ensure currency is detected based on IP
+    ensure_session_currency()
+    
+    # Get user's preferred currency
+    user_currency = currency_service.get_user_currency_preference(user_id) if user_id else None
+    if not user_currency:
+        user_ip = get_user_real_ip()
+        user_currency = currency_service.detect_user_currency(user_ip)
+        print(f"🌍 Billing page - IP: {user_ip} -> Currency: {user_currency}")
+    
+    # Format payment amounts
     for payment in payments:
         payment_currency = payment.get('currency', 'USD')
-        payment['formatted_amount'] = currency_service.format_amount(payment['amount'], payment_currency)
-        payment['currency_symbol'] = currency_service.get_currency_symbol(payment_currency)
+        original_amount = payment.get('amount', 0)
+        
+        # If payment was made in a different currency, show both original and converted
+        if payment_currency != user_currency:
+            # Show original amount
+            payment['original_formatted_amount'] = currency_service.format_amount(original_amount, payment_currency)
+            payment['original_currency_symbol'] = currency_service.get_currency_symbol(payment_currency)
+            
+            # Convert and show in user's preferred currency
+            converted_amount = currency_service.convert_amount(original_amount, payment_currency, user_currency)
+            payment['formatted_amount'] = currency_service.format_amount(converted_amount, user_currency)
+            payment['currency_symbol'] = currency_service.get_currency_symbol(user_currency)
+            payment['show_conversion'] = True
+        else:
+            # Same currency, just format normally
+            payment['formatted_amount'] = currency_service.format_amount(original_amount, payment_currency)
+            payment['currency_symbol'] = currency_service.get_currency_symbol(payment_currency)
+            payment['show_conversion'] = False
+        
         payment['payment_method'] = payment.get('payment_method') or 'Credit Card'
         payment['description'] = f"{payment.get('plan_name', 'Subscription')} ({payment.get('billing_period', '').capitalize()})"
-    return render_template('account/billing.html', payments=payments)
+    
+    return render_template('account/billing.html', 
+                         payments=payments, 
+                         user_currency=user_currency)
 
 # Currency API routes
 @app.route('/api/update-currency', methods=['POST'])

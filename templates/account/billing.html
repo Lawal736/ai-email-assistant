@@ -71,7 +71,18 @@ function formatDate(dateValue) {
                                 <tr>
                                     <td id="date-{{ loop.index }}">{{ payment.created_at if payment.created_at else 'N/A' }}</td>
                                     <td>{{ payment.description or 'Subscription Payment' }}</td>
-                                    <td>{{ payment.currency_symbol }}{{ payment.formatted_amount }}</td>
+                                    <td>
+                                        {% if payment.show_conversion %}
+                                        <div>
+                                            <strong>{{ payment.currency_symbol }}{{ payment.formatted_amount }}</strong>
+                                            <small class="text-muted d-block">
+                                                (Originally {{ payment.original_currency_symbol }}{{ payment.original_formatted_amount }})
+                                            </small>
+                                        </div>
+                                        {% else %}
+                                        {{ payment.currency_symbol }}{{ payment.formatted_amount }}
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <span class="badge bg-{{ 'success' if payment.status == 'succeeded' else 'warning' if payment.status == 'pending' else 'danger' }}">
                                             {{ payment.status|title }}
