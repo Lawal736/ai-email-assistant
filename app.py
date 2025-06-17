@@ -2945,17 +2945,6 @@ def api_advanced_analytics():
     except Exception as e:
         return jsonify({'error': f'Advanced analytics failed: {str(e)}'}), 500
 
-# Legal pages
-@app.route('/terms')
-def terms():
-    """Terms of Service"""
-    return render_template('legal/terms.html')
-
-@app.route('/privacy')
-def privacy():
-    """Privacy policy page"""
-    return render_template('privacy.html')
-
 @app.route('/test-session')
 def test_session():
     """Test session functionality"""
