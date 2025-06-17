@@ -1124,6 +1124,86 @@ def admin_payment_status():
         print(f"❌ Admin status error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/fix-subscription/<int:user_id>')
+def admin_fix_subscription(user_id):
+    """Admin endpoint to fix subscription activation for a specific user"""
+    try:
+        print(f"🔧 Admin: Fixing subscription for user {user_id}...")
+        
+        # Get user details
+        user = user_model.get_user_by_id(user_id)
+        if not user:
+            return jsonify({'error': f'User {user_id} not found'}), 404
+        
+        # Get user's payment history
+        payments = payment_service.payment_model.get_user_payments(user_id)
+        
+        # Find the most recent successful payment for Pro/Enterprise
+        recent_successful_payment = None
+        for payment in payments:
+            if payment['status'] == 'completed' and payment['plan_name'] in ['pro', 'enterprise']:
+                recent_successful_payment = payment
+                break
+        
+        if not recent_successful_payment:
+            return jsonify({'error': f'No successful Pro/Enterprise payments found for user {user_id}'}), 400
+        
+        current_plan = user.get('subscription_plan', 'free')
+        target_plan = recent_successful_payment['plan_name']
+        
+        print(f"🔍 User {user_id}: {user['email']}")
+        print(f"   Current plan: {current_plan}")
+        print(f"   Target plan: {target_plan}")
+        print(f"   Payment: {recent_successful_payment['amount']} {recent_successful_payment['currency']}")
+        
+        if current_plan == target_plan:
+            return jsonify({
+                'success': True,
+                'message': f'User {user_id} already has {target_plan} subscription activated',
+                'current_plan': current_plan
+            })
+        
+        # Calculate subscription end date
+        billing_period = recent_successful_payment.get('billing_period', 'monthly')
+        if billing_period == 'yearly':
+            end_date = datetime.now() + timedelta(days=365)
+        else:
+            end_date = datetime.now() + timedelta(days=30)
+        
+        # Update subscription
+        success = user_model.update_subscription(
+            user_id=user_id,
+            plan_name=target_plan,
+            stripe_customer_id=recent_successful_payment.get('stripe_payment_intent_id'),
+            expires_at=end_date
+        )
+        
+        if success:
+            # If this is the current session user, update session data
+            if session.get('user_id') == user_id:
+                updated_user = user_model.get_user_by_id(user_id)
+                session['subscription_plan'] = updated_user.get('subscription_plan', 'free')
+                session['subscription_status'] = updated_user.get('subscription_status', 'inactive')
+                session['subscription_expires'] = updated_user.get('subscription_expires')
+                print(f"✅ Updated session data for current user")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Subscription activated successfully for user {user_id}',
+                'previous_plan': current_plan,
+                'new_plan': target_plan,
+                'expires_at': end_date.isoformat(),
+                'payment_reference': recent_successful_payment.get('stripe_payment_intent_id')
+            })
+        else:
+            return jsonify({'error': f'Failed to update subscription for user {user_id}'}), 500
+            
+    except Exception as e:
+        print(f"❌ Admin fix subscription error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # User account routes
 @app.route('/account')
 @login_required
