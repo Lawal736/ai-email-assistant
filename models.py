@@ -8,7 +8,21 @@ import time
 class DatabaseManager:
     """Database manager for user authentication and payments"""
     
-    def __init__(self, db_path='users.db'):
+    def __init__(self, db_path=None):
+        # Use persistent path for production, local path for development
+        if db_path is None:
+            import os
+            if os.getenv('DIGITALOCEAN_APP_PLATFORM'):
+                # Production: Use persistent volume mount
+                db_path = '/app/data/users.db'
+                # Ensure directory exists
+                os.makedirs('/app/data', exist_ok=True)
+                print(f"🔧 Using persistent database path: {db_path}")
+            else:
+                # Development: Use local file
+                db_path = 'users.db'
+                print(f"🔧 Using local database path: {db_path}")
+        
         self.db_path = db_path
         self._lock = threading.Lock()
         self.init_database()

@@ -2334,6 +2334,98 @@ def debug_user_status():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/backup-database')
+def backup_database_endpoint():
+    """Admin endpoint to create database backup"""
+    try:
+        from database_backup import backup_database
+        import tempfile
+        import os
+        
+        # Create backup in temp directory
+        db_path = user_model.db_manager.db_path if user_model else 'users.db'
+        
+        # Create temporary backup file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+            temp_backup_path = temp_file.name
+        
+        # Create backup using our utility
+        backup_file = backup_database(db_path, temp_backup_path)
+        
+        if backup_file and os.path.exists(backup_file):
+            # Read backup content
+            with open(backup_file, 'r') as f:
+                backup_content = f.read()
+            
+            # Clean up temp file
+            os.unlink(backup_file)
+            
+            # Generate download filename
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            download_name = f'database_backup_{timestamp}.json'
+            
+            # Return as downloadable response
+            from flask import Response
+            return Response(
+                backup_content,
+                mimetype='application/json',
+                headers={'Content-Disposition': f'attachment; filename={download_name}'}
+            )
+        else:
+            return jsonify({'error': 'Backup failed'}), 500
+            
+    except Exception as e:
+        print(f"❌ Backup endpoint error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/database-stats')
+def database_stats_endpoint():
+    """Admin endpoint to get database statistics"""
+    try:
+        import sqlite3
+        import os
+        
+        db_path = user_model.db_manager.db_path if user_model else 'users.db'
+        
+        # Check if database exists
+        if not os.path.exists(db_path):
+            return jsonify({
+                'error': 'Database file not found',
+                'database_path': db_path
+            }), 404
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        stats = {}
+        
+        # Get table counts
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = cursor.fetchone()[0]
+            stats[table] = count
+        
+        # Get database size
+        db_size = os.path.getsize(db_path)
+        
+        conn.close()
+        
+        return jsonify({
+            'database_path': db_path,
+            'database_size_bytes': db_size,
+            'database_size_mb': round(db_size / 1024 / 1024, 2),
+            'table_counts': stats,
+            'total_tables': len(stats),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port) 
