@@ -133,6 +133,25 @@ class DatabaseManager:
                 )
             ''')
             
+            # Password reset tokens table (missing from original)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id),
+                    token VARCHAR(255) UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    used BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create indexes for performance
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_payment_records_user_id ON payment_records(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_tracking_user_id ON usage_tracking(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token)')
+            
             conn.commit()
             print("✅ PostgreSQL database initialized successfully")
             
@@ -600,30 +619,18 @@ class User:
         cursor = conn.cursor()
         
         try:
-            # Create table if it doesn't exist
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES users(id),
-                    token VARCHAR(255) UNIQUE NOT NULL,
-                    expires_at TIMESTAMP NOT NULL,
-                    used BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
             cursor.execute('''
                 INSERT INTO password_reset_tokens (user_id, token, expires_at)
                 VALUES (%s, %s, %s)
             ''', (user_id, token, expires_at))
             conn.commit()
             return True
-        except Exception as e:
-            print(f"❌ Error creating password reset token: {e}")
-            return False  # Token already exists or other error
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            return False  # Token already exists
         finally:
             conn.close()
-
+    
     def get_user_by_reset_token(self, token):
         """Get user by reset token"""
         conn = self.db_manager.get_connection()
@@ -640,11 +647,18 @@ class User:
             result = cursor.fetchone()
             
             if result:
-                return dict(result)
+                return {
+                    'id': result['id'],
+                    'email': result['email'],
+                    'first_name': result['first_name'],
+                    'last_name': result['last_name'],
+                    'expires_at': result['expires_at'],
+                    'used': result['used']
+                }
             return None
         finally:
             conn.close()
-
+    
     def mark_reset_token_used(self, token):
         """Mark a reset token as used"""
         conn = self.db_manager.get_connection()
@@ -653,8 +667,147 @@ class User:
         try:
             cursor.execute('UPDATE password_reset_tokens SET used = TRUE WHERE token = %s', (token,))
             conn.commit()
+            return cursor.rowcount > 0
         finally:
             conn.close()
+
+    def get_user_by_email(self, email):
+        """Get user by email address"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT id, email, first_name, last_name, subscription_plan, 
+                       subscription_status, subscription_expires, api_usage_count, 
+                       monthly_usage_limit, gmail_email, created_at, last_login
+                FROM users WHERE email = %s AND is_active = TRUE
+            ''', (email,))
+            
+            user_data = cursor.fetchone()
+            
+            if user_data:
+                return dict(user_data)
+            return None
+        finally:
+            conn.close()
+
+    def repair_user_token_integrity(self, user_id, token_data=None, gmail_email=None):
+        """Repair user token integrity issues by ensuring proper database state"""
+        print(f"🔧 [DEBUG] Repairing token integrity for user_id: {user_id}")
+        
+        try:
+            # First ensure user integrity
+            if not self.ensure_user_integrity(user_id):
+                print(f"❌ [DEBUG] Cannot repair token - user {user_id} integrity check failed")
+                return False
+            
+            # Force database sync first
+            self.force_database_sync()
+            
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Check current user state
+            cursor.execute('''
+                SELECT id, email, gmail_token, gmail_email, subscription_plan, subscription_status 
+                FROM users WHERE id = %s
+            ''', (user_id,))
+            
+            user_data = cursor.fetchone()
+            
+            if not user_data:
+                print(f"❌ [DEBUG] User {user_id} not found - cannot repair")
+                conn.close()
+                return False
+            
+            print(f"🔍 [DEBUG] Current user state: ID={user_data[0]}, Email={user_data[1]}")
+            print(f"🔍 [DEBUG] Current token: {'Present' if user_data[2] else 'Missing'}")
+            print(f"🔍 [DEBUG] Current gmail_email: {user_data[3]}")
+            
+            if token_data and not user_data[2]:
+                # Token is missing but we have it - restore it
+                print("🔧 [DEBUG] Restoring missing token...")
+                
+                cursor.execute('''
+                    UPDATE users 
+                    SET gmail_token = %s, gmail_email = %s, last_login = CURRENT_TIMESTAMP 
+                    WHERE id = %s
+                ''', (token_data, gmail_email, user_id))
+                
+                # Also update robust storage
+                cursor.execute('''
+                    INSERT INTO user_tokens (user_id, token_data, gmail_email, updated_at)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id) 
+                    DO UPDATE SET 
+                        token_data = EXCLUDED.token_data,
+                        gmail_email = EXCLUDED.gmail_email,
+                        updated_at = CURRENT_TIMESTAMP,
+                        is_active = TRUE
+                ''', (user_id, token_data, gmail_email))
+                
+                conn.commit()
+                
+                if cursor.rowcount > 0:
+                    print("✅ [DEBUG] Token restoration successful")
+                else:
+                    print("❌ [DEBUG] Token restoration failed")
+                    conn.close()
+                    return False
+            
+            # Verify final state
+            cursor.execute('SELECT gmail_token FROM users WHERE id = %s', (user_id,))
+            final_check = cursor.fetchone()
+            
+            if final_check and final_check[0]:
+                print("✅ [DEBUG] Token integrity repair completed successfully")
+                conn.close()
+                return True
+            else:
+                print("❌ [DEBUG] Token integrity repair failed")
+                conn.close()
+                return False
+                
+        except Exception as e:
+            print(f"❌ [DEBUG] Error during token integrity repair: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def update_subscription(self, user_id, plan_name, stripe_customer_id=None, expires_at=None):
+        """Update user's subscription after successful payment"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE users 
+                SET subscription_plan = %s, subscription_status = 'active', 
+                    subscription_expires = %s, stripe_customer_id = COALESCE(%s, stripe_customer_id)
+                WHERE id = %s
+            ''', (plan_name, expires_at, stripe_customer_id, user_id))
+            
+            conn.commit()
+            
+            # Check if any rows were affected
+            success = cursor.rowcount > 0
+            
+            if success:
+                print(f"✅ [DEBUG] Subscription updated successfully for user {user_id}: {plan_name}")
+            else:
+                print(f"❌ [DEBUG] No rows updated for user {user_id} subscription")
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ [DEBUG] Error in update_subscription: {e}")
+            if 'conn' in locals():
+                conn.rollback()
+            return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
 
 class SubscriptionPlan:
     """Subscription plan model"""
@@ -693,7 +846,7 @@ class SubscriptionPlan:
             conn.close()
     
     def get_plan_by_name(self, plan_name):
-        """Get plan by name"""
+        """Get subscription plan by name"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
@@ -705,27 +858,183 @@ class SubscriptionPlan:
             ''', (plan_name,))
             
             row = cursor.fetchone()
+            
             if row:
-                return dict(row)
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'price_monthly': float(row['price_monthly']),
+                    'price_yearly': float(row['price_yearly']),
+                    'email_limit': row['email_limit'],
+                    'features': row['features'].split(', ') if row['features'] else [],
+                    'stripe_price_id_monthly': row['stripe_price_id_monthly'],
+                    'stripe_price_id_yearly': row['stripe_price_id_yearly']
+                }
             return None
+        finally:
+            conn.close()
+    
+    def create_plan(self, name, price_monthly, price_yearly, email_limit, features=None, 
+                   stripe_price_id_monthly=None, stripe_price_id_yearly=None):
+        """Create a new subscription plan"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            features_str = ', '.join(features) if features else ''
+            
+            cursor.execute('''
+                INSERT INTO subscription_plans 
+                (name, price_monthly, price_yearly, email_limit, features, 
+                 stripe_price_id_monthly, stripe_price_id_yearly)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (name) DO NOTHING
+                RETURNING id
+            ''', (name, price_monthly, price_yearly, email_limit, features_str, 
+                  stripe_price_id_monthly, stripe_price_id_yearly))
+            
+            result = cursor.fetchone()
+            conn.commit()
+            
+            return result[0] if result else None
         finally:
             conn.close()
 
 class PaymentRecord:
-    """Payment record model"""
+    """Payment record model for PostgreSQL"""
     
     def __init__(self, db_manager):
         self.db_manager = db_manager
     
     def create_payment_record(self, user_id, stripe_payment_intent_id, amount, 
                             plan_name, billing_period, status='pending', currency='usd', payment_method='card'):
-        """Create payment record"""
-        return 1  # Placeholder
+        """Create a new payment record"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO payment_records 
+                (user_id, stripe_payment_intent_id, amount, currency, plan_name, billing_period, status, payment_method)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            ''', (user_id, stripe_payment_intent_id, amount, currency, plan_name, billing_period, status, payment_method))
+            
+            payment_id = cursor.fetchone()[0]
+            conn.commit()
+            return payment_id
+        finally:
+            conn.close()
+    
+    def update_payment_status(self, stripe_payment_intent_id, status):
+        """Update payment status"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE payment_records 
+                SET status = %s 
+                WHERE stripe_payment_intent_id = %s
+            ''', (status, stripe_payment_intent_id))
+            
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
     
     def get_user_payments(self, user_id):
-        """Get user payments"""
-        return []  # Placeholder
-    
+        """Get all payments for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT id, stripe_payment_intent_id, amount, currency, status, 
+                       plan_name, billing_period, payment_method, created_at
+                FROM payment_records 
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            ''', (user_id,))
+            
+            payments = []
+            for row in cursor.fetchall():
+                payments.append({
+                    'id': row['id'],
+                    'stripe_payment_intent_id': row['stripe_payment_intent_id'],
+                    'amount': float(row['amount']),
+                    'currency': row['currency'],
+                    'status': row['status'],
+                    'plan_name': row['plan_name'],
+                    'billing_period': row['billing_period'],
+                    'payment_method': row['payment_method'],
+                    'created_at': row['created_at']
+                })
+            
+            return payments
+        finally:
+            conn.close()
+
     def get_payments_by_user(self, user_id):
-        """Alias for compatibility"""
-        return self.get_user_payments(user_id) 
+        """Get all payments for a user (alias for compatibility)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT id, user_id, stripe_payment_intent_id, amount, currency, status, 
+                       plan_name, billing_period, payment_method, created_at
+                FROM payment_records 
+                WHERE user_id = %s 
+                ORDER BY created_at DESC
+            ''', (user_id,))
+            
+            payments = []
+            for row in cursor.fetchall():
+                payments.append({
+                    'id': row['id'],
+                    'user_id': row['user_id'],
+                    'stripe_payment_intent_id': row['stripe_payment_intent_id'],
+                    'amount': float(row['amount']),
+                    'currency': row['currency'],
+                    'status': row['status'],
+                    'plan_name': row['plan_name'],
+                    'billing_period': row['billing_period'],
+                    'payment_method': row['payment_method'],
+                    'created_at': row['created_at']
+                })
+            
+            return payments
+        finally:
+            conn.close()
+
+    def get_payment_by_reference(self, reference):
+        """Get payment by reference (payment ID)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT id, user_id, stripe_payment_intent_id, amount, currency, status, 
+                       plan_name, billing_period, payment_method, created_at
+                FROM payment_records 
+                WHERE stripe_payment_intent_id = %s
+            ''', (reference,))
+            
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'user_id': row['user_id'],
+                    'stripe_payment_intent_id': row['stripe_payment_intent_id'],
+                    'amount': float(row['amount']),
+                    'currency': row['currency'],
+                    'status': row['status'],
+                    'plan_name': row['plan_name'],
+                    'billing_period': row['billing_period'],
+                    'payment_method': row['payment_method'],
+                    'created_at': row['created_at']
+                }
+            return None
+        finally:
+            conn.close() 
