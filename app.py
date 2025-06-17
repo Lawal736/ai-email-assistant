@@ -15,6 +15,7 @@ from payment_service import PaymentService
 from currency_service import currency_service
 import time
 import re
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -2049,68 +2050,58 @@ def api_summary():
 @login_required
 def api_analyze_email():
     """API endpoint to analyze a single email with attachments"""
+    import traceback
     user_id = session.get('user_id')
-    
-    # EMERGENCY: Check if user exists and recover if needed
-    if user_model:
-        session_data = {
-            'user_email': session.get('user_email'),
-            'user_name': session.get('user_name'), 
-            'subscription_plan': session.get('subscription_plan', 'free'),
-            'subscription_status': session.get('subscription_status', 'active')
-        }
-        
-        mismatch_fixed = user_model.check_and_repair_user_session_mismatch(user_id, session_data)
-        if not mismatch_fixed:
-            return jsonify({
-                'error': 'Your account data was corrupted. Please log in again.',
-                'requires_login': True
-            }), 401
-    
-    # Get user subscription info
-    user = user_model.get_user_by_id(user_id) if user_model else None
-    user_plan = user.get('subscription_plan', 'free') if user else 'free'
-    
-    # Check if this is a thread analysis request
     data = request.get_json()
-    analysis_type = data.get('type', 'summary')
-    is_thread_analysis = analysis_type == 'thread_analysis'
-    
-    # Allow basic thread analysis for free users, but require Pro for advanced analysis
-    if not is_thread_analysis and user_plan == 'free':
-        return jsonify({
-            'error': 'Advanced AI analysis requires a Pro subscription. Thread viewing is available for free users.',
-            'requires_upgrade': True,
-            'feature': 'Advanced AI Analysis'
-        }), 403
-    
-    # Check usage limits for free users
-    if user_plan == 'free':
-        usage_info = user_model.check_usage_limit(user_id) if user_model else None
-        if usage_info and usage_info['exceeded']:
-            return jsonify({
-                'error': 'Monthly usage limit exceeded. Please upgrade to Pro for unlimited analysis.',
-                'requires_upgrade': True,
-                'feature': 'Usage Limit'
-            }), 429
-    
-    # Check Gmail authentication
-    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
-    if not gmail_token:
-        return jsonify({'error': 'Gmail not connected. Please connect your Gmail account first.'}), 401
-    
+    debug_info = {}
     try:
+        # EMERGENCY: Check if user exists and recover if needed
+        if user_model:
+            session_data = {
+                'user_email': session.get('user_email'),
+                'user_name': session.get('user_name'), 
+                'subscription_plan': session.get('subscription_plan', 'free'),
+                'subscription_status': session.get('subscription_status', 'active')
+            }
+            mismatch_fixed = user_model.check_and_repair_user_session_mismatch(user_id, session_data)
+            if not mismatch_fixed:
+                return jsonify({
+                    'error': 'Your account data was corrupted. Please log in again.',
+                    'requires_login': True
+                }), 401
+        # Get user subscription info
+        user = user_model.get_user_by_id(user_id) if user_model else None
+        user_plan = user.get('subscription_plan', 'free') if user else 'free'
+        # Check if this is a thread analysis request
+        analysis_type = data.get('type', 'summary')
+        is_thread_analysis = analysis_type == 'thread_analysis'
+        # Allow basic thread analysis for free users, but require Pro for advanced analysis
+        if not is_thread_analysis and user_plan == 'free':
+            return jsonify({
+                'error': 'Advanced AI analysis requires a Pro subscription. Thread viewing is available for free users.',
+                'requires_upgrade': True,
+                'feature': 'Advanced AI Analysis'
+            }), 403
+        # Check usage limits for free users
+        if user_plan == 'free':
+            usage_info = user_model.check_usage_limit(user_id) if user_model else None
+            if usage_info and usage_info['exceeded']:
+                return jsonify({
+                    'error': 'Monthly usage limit exceeded. Please upgrade to Pro for unlimited analysis.',
+                    'requires_upgrade': True,
+                    'feature': 'Usage Limit'
+                }), 429
+        # Check Gmail authentication
+        gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+        if not gmail_token:
+            return jsonify({'error': 'Gmail not connected. Please connect your Gmail account first.'}), 401
         # Set Gmail token
         gmail_service.set_credentials_from_token(gmail_token)
-        
         if not gmail_service.is_authenticated():
             return jsonify({'error': 'Gmail authentication expired. Please reconnect your Gmail account.'}), 401
-        
         email_id = data.get('email_id')
-        
         if not email_id:
             return jsonify({'error': 'Email ID is required'}), 400
-        
         # Get the full email with attachments
         service = gmail_service._get_service()
         email_data = service.users().messages().get(
@@ -2118,11 +2109,9 @@ def api_analyze_email():
             id=email_id,
             format='full'
         ).execute()
-        
         parsed_email = gmail_service._parse_email(email_data)
         if not parsed_email:
             return jsonify({'error': 'Email not found or could not be parsed'}), 404
-        
         # Process email with attachments if available (Pro feature)
         try:
             if user_plan != 'free' and email_processor and document_processor and gmail_service:
@@ -2130,72 +2119,64 @@ def api_analyze_email():
             else:
                 processed_email = email_processor._process_single_email(parsed_email) if email_processor else parsed_email
         except Exception as processing_error:
+            debug_info['processing_error'] = str(processing_error)
+            debug_info['processing_traceback'] = traceback.format_exc()
             print(f"⚠️ Email processing error: {processing_error}")
-            # Fallback to basic email data if processing fails
+            print(debug_info['processing_traceback'])
             processed_email = parsed_email
-        
         # Prepare content for AI analysis
         email_content = processed_email.get('body', '')
         subject = processed_email.get('subject', '')
         sender = processed_email.get('sender', '')
-        
         # Clean and validate content to prevent pattern matching errors
         try:
-            # Basic content cleaning to prevent regex issues
             if email_content:
-                # Remove problematic characters that might cause pattern matching issues
+                import re
                 email_content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', email_content)
-                # Ensure content is valid UTF-8
                 email_content = email_content.encode('utf-8', errors='ignore').decode('utf-8')
-            
             if subject:
                 subject = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', subject)
                 subject = subject.encode('utf-8', errors='ignore').decode('utf-8')
-            
             if sender:
                 sender = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', sender)
                 sender = sender.encode('utf-8', errors='ignore').decode('utf-8')
-                
         except Exception as cleaning_error:
+            debug_info['cleaning_error'] = str(cleaning_error)
+            debug_info['cleaning_traceback'] = traceback.format_exc()
             print(f"⚠️ Content cleaning error: {cleaning_error}")
-            # Use basic fallback if cleaning fails
-            email_content = str(processed_email.get('body', ''))[:1000]  # Truncate to safe length
+            print(debug_info['cleaning_traceback'])
+            email_content = str(processed_email.get('body', ''))[:1000]
             subject = str(processed_email.get('subject', ''))[:200]
             sender = str(processed_email.get('sender', ''))[:100]
-        
         # Include attachment analysis if available (Pro feature only)
         attachment_analysis = processed_email.get('attachment_analysis', '')
         if attachment_analysis and user_plan != 'free':
             email_content += f"\n\nAttachment Analysis:\n{attachment_analysis}"
-        
         # Enhanced content validation with fallback
         if not email_content.strip():
-            # Try to use email snippet as fallback
             snippet = processed_email.get('snippet', '')
             if snippet.strip():
                 email_content = f"Email preview: {snippet}"
                 print(f"🔍 Using email snippet as fallback content: {len(snippet)} chars")
             else:
-                # Last resort: provide minimal analysis based on subject and sender
                 if subject.strip() or sender.strip():
                     email_content = f"Subject: {subject}\nFrom: {sender}\n\nThis email could not be fully extracted, but basic information is available for analysis."
                     print(f"🔍 Using subject/sender as fallback content")
                 else:
+                    debug_info['content_error'] = 'Email content could not be extracted and no fallback information is available'
                     return jsonify({
                         'error': 'Email content could not be extracted and no fallback information is available',
-                        'suggestion': 'This email may have an unsupported format. Try opening it in Gmail directly.'
+                        'suggestion': 'This email may have an unsupported format. Try opening it in Gmail directly.',
+                        'debug': debug_info
                     }), 400
-        
         # Generate analysis based on type
         try:
             print(f"🔍 Starting AI analysis for type: {analysis_type} (user plan: {user_plan})")
             print(f"🔍 Email content length: {len(email_content)}")
             print(f"🔍 Subject: {subject}")
             print(f"🔍 Sender: {sender}")
-            
             # For thread analysis, provide a simpler analysis for free users
             if is_thread_analysis and user_plan == 'free':
-                # Provide basic thread summary for free users
                 analysis_result = {
                     'success': True,
                     'content': f"""
@@ -2222,34 +2203,21 @@ Upgrade to Pro for detailed AI analysis including:
                 }
             else:
                 # Full AI analysis for Pro users or other analysis types
-                if analysis_type == 'summary':
-                    analysis_result = ai_service.generate_email_summary(email_content, subject, sender)
-                elif analysis_type == 'action_items':
-                    analysis_result = ai_service.extract_action_items(email_content, subject, sender)
-                elif analysis_type == 'recommendations':
-                    analysis_result = ai_service.generate_response_recommendations(email_content, subject, sender)
-                elif analysis_type == 'thread_analysis':
-                    analysis_result = ai_service.analyze_email(email_content, 'thread_analysis')
-                else:
-                    analysis_result = ai_service.generate_email_summary(email_content, subject, sender)
-            
-            print(f"🔍 AI analysis result success: {analysis_result.get('success', False)}")
-            
+                analysis_result = ai_service.analyze_email(email_content, subject, sender, user_plan, analysis_type)
         except Exception as ai_error:
-            import traceback
-            error_details = traceback.format_exc()
+            debug_info['ai_error'] = str(ai_error)
+            debug_info['ai_traceback'] = traceback.format_exc()
             print(f"❌ AI analysis failed: {ai_error}")
-            print(f"❌ AI error traceback: {error_details}")
+            print(debug_info['ai_traceback'])
             return jsonify({
                 'error': f'AI analysis service unavailable. Please try again later.',
-                'technical_error': str(ai_error) if user_plan != 'free' else None
+                'technical_error': str(ai_error) if user_plan != 'free' else None,
+                'debug': debug_info
             }), 500
-        
         # Track usage for unique emails only (all plans)
         if user_model:
             unique_count = user_model.increment_usage_for_unique_emails(user_id, 'email_analysis', [email_id])
             print(f"📊 Email analysis: processed {unique_count} unique email (ID: {email_id})")
-        
         if analysis_result and analysis_result.get('success'):
             return jsonify({
                 'success': True,
@@ -2257,25 +2225,30 @@ Upgrade to Pro for detailed AI analysis including:
                 'model_used': analysis_result.get('model_used', 'unknown'),
                 'type': analysis_type,
                 'user_plan': user_plan,
-                'is_basic': user_plan == 'free' and is_thread_analysis
+                'is_basic': user_plan == 'free' and is_thread_analysis,
+                'debug': debug_info
             })
         else:
             error_msg = analysis_result.get('error', 'Unknown AI analysis error') if analysis_result else 'AI analysis returned no result'
+            debug_info['analysis_error'] = error_msg
             print(f"❌ AI analysis failed: {error_msg}")
             return jsonify({
                 'success': False, 
                 'error': 'Analysis could not be completed. Please try again or contact support if the issue persists.',
-                'technical_error': error_msg if user_plan != 'free' else None
+                'technical_error': error_msg if user_plan != 'free' else None,
+                'debug': debug_info
             }), 500
-    
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
         print(f"❌ Exception in analyze-email: {str(e)}")
         print(f"❌ Full traceback: {error_details}")
+        print(f"❌ Request data: {data}")
         return jsonify({
             'error': 'Analysis service temporarily unavailable. Please try again later.',
-            'technical_error': str(e) if user_plan != 'free' else None
+            'technical_error': str(e),
+            'traceback': error_details,
+            'request_data': data
         }), 500
 
 @app.route('/api/process-emails')
