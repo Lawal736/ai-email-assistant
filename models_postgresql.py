@@ -482,6 +482,142 @@ class User:
             print(f"❌ [EMERGENCY] User recovery failed: {e}")
             return False
 
+    def increment_usage(self, user_id, action_type, email_count=1):
+        """Increment user's API usage"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Add usage record (create table if it doesn't exist)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS usage_tracking (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id),
+                    action_type VARCHAR(100) NOT NULL,
+                    email_count INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            cursor.execute('''
+                INSERT INTO usage_tracking (user_id, action_type, email_count)
+                VALUES (%s, %s, %s)
+            ''', (user_id, action_type, email_count))
+            
+            # Update user's usage count
+            cursor.execute('''
+                UPDATE users 
+                SET api_usage_count = COALESCE(api_usage_count, 0) + %s
+                WHERE id = %s
+            ''', (email_count, user_id))
+            
+            conn.commit()
+        finally:
+            conn.close()
+
+    def check_usage_limit(self, user_id):
+        """Check if user has exceeded their usage limit"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT api_usage_count, monthly_usage_limit, subscription_plan
+                FROM users WHERE id = %s
+            ''', (user_id,))
+            
+            result = cursor.fetchone()
+            
+            if result:
+                usage_count, limit, plan = result
+                usage_count = usage_count or 0  # Handle NULL values
+                limit = limit or 100  # Default limit
+                return {
+                    'usage_count': usage_count,
+                    'limit': limit,
+                    'plan': plan,
+                    'remaining': max(0, limit - usage_count),
+                    'exceeded': usage_count >= limit
+                }
+            return None
+        finally:
+            conn.close()
+
+    def update_password(self, user_id, new_password):
+        """Update user's password"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            password_hash = generate_password_hash(new_password)
+            cursor.execute('UPDATE users SET password_hash = %s WHERE id = %s', (password_hash, user_id))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    def create_password_reset_token(self, user_id, token, expires_at):
+        """Create a password reset token"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Create table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id),
+                    token VARCHAR(255) UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    used BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            cursor.execute('''
+                INSERT INTO password_reset_tokens (user_id, token, expires_at)
+                VALUES (%s, %s, %s)
+            ''', (user_id, token, expires_at))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error creating password reset token: {e}")
+            return False  # Token already exists or other error
+        finally:
+            conn.close()
+
+    def get_user_by_reset_token(self, token):
+        """Get user by reset token"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT u.id, u.email, u.first_name, u.last_name, prt.expires_at, prt.used
+                FROM users u
+                JOIN password_reset_tokens prt ON u.id = prt.user_id
+                WHERE prt.token = %s AND prt.used = FALSE AND prt.expires_at > CURRENT_TIMESTAMP
+            ''', (token,))
+            
+            result = cursor.fetchone()
+            
+            if result:
+                return dict(result)
+            return None
+        finally:
+            conn.close()
+
+    def mark_reset_token_used(self, token):
+        """Mark a reset token as used"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('UPDATE password_reset_tokens SET used = TRUE WHERE token = %s', (token,))
+            conn.commit()
+        finally:
+            conn.close()
+
 class SubscriptionPlan:
     """Subscription plan model"""
     
