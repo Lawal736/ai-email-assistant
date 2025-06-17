@@ -13,6 +13,7 @@ from models import DatabaseManager, User, SubscriptionPlan, PaymentRecord
 from payment_service import PaymentService
 from currency_service import currency_service
 import time
+import re
 
 # Load environment variables
 load_dotenv()
@@ -507,6 +508,11 @@ def dashboard():
         
         print("✅ Gmail authentication successful")
         
+        # Update session to reflect Gmail authentication status
+        session['gmail_authenticated'] = True
+        if user and user.get('gmail_email'):
+            session['gmail_email'] = user['gmail_email']
+        
         # Get today's emails
         print("📧 Fetching today's emails...")
         emails = gmail_service.get_todays_emails(max_results=50)
@@ -684,6 +690,11 @@ def oauth2callback():
                     flash('Gmail connection may be unstable. Please try reconnecting if you experience issues.', 'warning')
                 else:
                     flash('Gmail connected successfully!', 'success')
+                
+                # Set session variable for Gmail authentication status
+                session['gmail_authenticated'] = True
+                session['gmail_email'] = gmail_email
+                print("✅ Session updated with Gmail authentication")
             else:
                 print("❌ Failed to save Gmail token after all recovery attempts")
                 flash('Failed to save Gmail connection. Please try again.', 'error')
@@ -693,9 +704,6 @@ def oauth2callback():
             flash('Authentication failed. Please try again.', 'error')
             return redirect(url_for('connect_gmail'))
         
-        # Set session variable to indicate Gmail is authenticated
-        session['gmail_authenticated'] = True
-        print("✅ Session updated with Gmail authentication")
         return redirect(url_for('dashboard'))
         
     except Exception as e:
@@ -1387,15 +1395,44 @@ def api_analyze_email():
             return jsonify({'error': 'Email not found or could not be parsed'}), 404
         
         # Process email with attachments if available (Pro feature)
-        if user_plan != 'free' and email_processor and document_processor and gmail_service:
-            processed_email = email_processor.process_email_with_attachments(parsed_email)
-        else:
-            processed_email = email_processor._process_single_email(parsed_email) if email_processor else parsed_email
+        try:
+            if user_plan != 'free' and email_processor and document_processor and gmail_service:
+                processed_email = email_processor.process_email_with_attachments(parsed_email)
+            else:
+                processed_email = email_processor._process_single_email(parsed_email) if email_processor else parsed_email
+        except Exception as processing_error:
+            print(f"⚠️ Email processing error: {processing_error}")
+            # Fallback to basic email data if processing fails
+            processed_email = parsed_email
         
         # Prepare content for AI analysis
         email_content = processed_email.get('body', '')
         subject = processed_email.get('subject', '')
         sender = processed_email.get('sender', '')
+        
+        # Clean and validate content to prevent pattern matching errors
+        try:
+            # Basic content cleaning to prevent regex issues
+            if email_content:
+                # Remove problematic characters that might cause pattern matching issues
+                email_content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', email_content)
+                # Ensure content is valid UTF-8
+                email_content = email_content.encode('utf-8', errors='ignore').decode('utf-8')
+            
+            if subject:
+                subject = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', subject)
+                subject = subject.encode('utf-8', errors='ignore').decode('utf-8')
+            
+            if sender:
+                sender = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', sender)
+                sender = sender.encode('utf-8', errors='ignore').decode('utf-8')
+                
+        except Exception as cleaning_error:
+            print(f"⚠️ Content cleaning error: {cleaning_error}")
+            # Use basic fallback if cleaning fails
+            email_content = str(processed_email.get('body', ''))[:1000]  # Truncate to safe length
+            subject = str(processed_email.get('subject', ''))[:200]
+            sender = str(processed_email.get('sender', ''))[:100]
         
         # Include attachment analysis if available (Pro feature only)
         attachment_analysis = processed_email.get('attachment_analysis', '')
