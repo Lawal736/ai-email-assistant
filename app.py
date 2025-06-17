@@ -567,7 +567,23 @@ def dashboard():
         
         # Group emails by sender and subject for thread analysis
         email_threads = email_processor.group_emails_by_thread(processed_emails) if email_processor else {}
-        print(f"🧵 Created {len(email_threads)} email threads")
+        print(f"\U0001f9f5 Created {len(email_threads)} email threads")
+
+        # Apply per-thread FIFO limits based on user plan
+        plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
+        if plan == 'enterprise':
+            thread_limit = 50
+        elif plan == 'pro':
+            thread_limit = 25
+        else:
+            thread_limit = 10
+        print(f"\U0001f50d Applying per-thread limit: {thread_limit} emails for plan: {plan}")
+        for thread_key, thread in email_threads.items():
+            # Sort emails by date descending (most recent first)
+            thread['emails'].sort(key=lambda x: x.get('date', ''), reverse=True)
+            # Keep only the N most recent emails
+            thread['emails'] = thread['emails'][:thread_limit]
+            thread['thread_count'] = len(thread['emails'])
         
         # Get current date
         current_date = datetime.now().strftime('%B %d, %Y')
