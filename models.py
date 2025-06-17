@@ -132,6 +132,31 @@ class DatabaseManager:
             )
         ''')
         
+        # Robust token storage table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token_data TEXT NOT NULL,
+                gmail_email TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                UNIQUE(user_id)
+            )
+        ''')
+        
+        # Create trigger to update timestamp
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS update_token_timestamp 
+            AFTER UPDATE ON user_tokens
+            BEGIN
+                UPDATE user_tokens SET updated_at = CURRENT_TIMESTAMP 
+                WHERE id = NEW.id;
+            END
+        ''')
+        
         # Insert default subscription plans
         cursor.execute('''
             INSERT OR IGNORE INTO subscription_plans 
@@ -336,14 +361,20 @@ class User:
                 legacy_rows = cursor.rowcount
                 print(f"🔍 [DEBUG] Legacy table rows affected: {legacy_rows}")
                 
-                # 2. Update robust user_tokens table
-                cursor.execute('''
-                    INSERT OR REPLACE INTO user_tokens (user_id, token_data, gmail_email, updated_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (user_id, token_data, gmail_email))
-                
-                robust_rows = cursor.rowcount
-                print(f"🔍 [DEBUG] Robust table rows affected: {robust_rows}")
+                # 2. Update robust user_tokens table (with fallback)
+                robust_rows = 0
+                try:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO user_tokens (user_id, token_data, gmail_email, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (user_id, token_data, gmail_email))
+                    robust_rows = cursor.rowcount
+                    print(f"🔍 [DEBUG] Robust table rows affected: {robust_rows}")
+                except sqlite3.OperationalError as e:
+                    if "no such table: user_tokens" in str(e):
+                        print(f"⚠️ [DEBUG] user_tokens table missing - using legacy storage only")
+                    else:
+                        raise
                 
                 # Commit the transaction
                 cursor.execute('COMMIT')
@@ -351,19 +382,26 @@ class User:
                 # Dual verification - check both storage locations
                 cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
                 legacy_verification = cursor.fetchone()
-                
-                cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = ?', (user_id,))
-                robust_verification = cursor.fetchone()
-                
                 legacy_ok = legacy_verification and legacy_verification[0] == token_data
-                robust_ok = robust_verification and robust_verification[0] == token_data
                 
-                if robust_ok:
-                    print(f"✅ [DEBUG] Robust token storage verified (attempt {attempt + 1})")
-                    if legacy_ok:
-                        print(f"✅ [DEBUG] Legacy storage also verified")
+                # Try robust verification (with fallback)
+                robust_ok = False
+                try:
+                    cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = ?', (user_id,))
+                    robust_verification = cursor.fetchone()
+                    robust_ok = robust_verification and robust_verification[0] == token_data
+                except sqlite3.OperationalError as e:
+                    if "no such table: user_tokens" in str(e):
+                        print(f"⚠️ [DEBUG] user_tokens table missing during verification")
                     else:
-                        print(f"⚠️ [DEBUG] Legacy storage failed but robust succeeded")
+                        raise
+                
+                # Accept success from either storage system
+                if robust_ok or legacy_ok:
+                    if robust_ok:
+                        print(f"✅ [DEBUG] Robust token storage verified (attempt {attempt + 1})")
+                    if legacy_ok:
+                        print(f"✅ [DEBUG] Legacy token storage verified (attempt {attempt + 1})")
                     conn.close()
                     return True
                 else:
@@ -438,17 +476,23 @@ class User:
                 
                 print(f"✅ [DEBUG] User {user_id} found: {user_check[1]} (attempt {attempt + 1})")
                 
-                # Try dual storage - robust first, then legacy
-                cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = ? AND is_active = 1', (user_id,))
-                robust_result = cursor.fetchone()
+                # Try dual storage - robust first, then legacy (with fallback)
+                robust_token = None
+                try:
+                    cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = ? AND is_active = 1', (user_id,))
+                    robust_result = cursor.fetchone()
+                    robust_token = robust_result[0] if robust_result else None
+                except sqlite3.OperationalError as e:
+                    if "no such table: user_tokens" in str(e):
+                        print(f"⚠️ [DEBUG] user_tokens table missing - using legacy storage only")
+                    else:
+                        raise
                 
                 cursor.execute('SELECT gmail_token FROM users WHERE id = ?', (user_id,))
                 legacy_result = cursor.fetchone()
+                legacy_token = legacy_result[0] if legacy_result else None
                 
                 conn.close()
-                
-                robust_token = robust_result[0] if robust_result else None
-                legacy_token = legacy_result[0] if legacy_result else None
                 
                 # Prefer robust storage
                 if robust_token:
