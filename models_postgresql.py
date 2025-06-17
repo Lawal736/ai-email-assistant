@@ -89,9 +89,9 @@ class DatabaseManager:
                 INSERT INTO subscription_plans 
                 (name, price_monthly, price_yearly, email_limit, features, stripe_price_id_monthly, stripe_price_id_yearly)
                 VALUES 
-                ('free', 0.00, 0.00, 100, 'Basic email analysis, Daily summaries, Action items, 10 emails per load, 100 emails per month', NULL, NULL),
-                ('pro', 9.99, 99.99, 500, 'Advanced AI analysis, Document processing, Priority support, Custom insights', 'price_monthly_pro', 'price_yearly_pro'),
-                ('enterprise', 29.99, 299.99, 2000, 'Unlimited analysis, Team collaboration, API access, Custom integrations', 'price_monthly_enterprise', 'price_yearly_enterprise')
+                            ('free', 0.00, 0.00, 50, 'Basic email analysis, Daily summaries, Action items, Email limit: 50/month', NULL, NULL),
+            ('pro', 19.99, 199.99, 1000, 'Advanced AI analysis, Unlimited summaries, Priority support, Email limit: 1,000/month, Document analysis, Thread analysis', NULL, NULL),
+            ('enterprise', 49.99, 499.99, 10000, 'Enterprise-grade AI, Unlimited everything, 24/7 support, Email limit: 10,000/month, Advanced analytics, Custom integrations, Team management', NULL, NULL)
                 ON CONFLICT (name) DO NOTHING
             ''')
             
@@ -579,16 +579,31 @@ class User:
         
         try:
             cursor.execute('''
-                SELECT api_usage_count, monthly_usage_limit, subscription_plan
+                SELECT api_usage_count, subscription_plan
                 FROM users WHERE id = %s
             ''', (user_id,))
             
             result = cursor.fetchone()
             
             if result:
-                usage_count, limit, plan = result
+                usage_count, plan = result
                 usage_count = usage_count or 0  # Handle NULL values
-                limit = limit or 100  # Default limit
+                
+                # Get dynamic limit from subscription plan
+                from models_postgresql import SubscriptionPlan
+                plan_model = SubscriptionPlan(self.db_manager)
+                plan_data = plan_model.get_plan_by_name(plan or 'free')
+                
+                # Use plan's email_limit as the usage limit
+                if plan_data:
+                    limit = plan_data['email_limit']
+                    print(f"🔍 Dynamic usage limit for {plan}: {limit} emails/month")
+                else:
+                    # Fallback to free plan limit
+                    free_plan = plan_model.get_plan_by_name('free')
+                    limit = free_plan['email_limit'] if free_plan else 50
+                    print(f"⚠️ Plan '{plan}' not found, using free plan limit: {limit}")
+                
                 return {
                     'usage_count': usage_count,
                     'limit': limit,
@@ -776,17 +791,32 @@ class User:
             return False
 
     def update_subscription(self, user_id, plan_name, stripe_customer_id=None, expires_at=None):
-        """Update user's subscription after successful payment"""
+        """Update user's subscription after successful payment and automatically set correct quota"""
         try:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             
+            # Get the correct email limit for the plan
+            from models_postgresql import SubscriptionPlan
+            plan_model = SubscriptionPlan(self.db_manager)
+            plan_data = plan_model.get_plan_by_name(plan_name)
+            
+            if plan_data:
+                email_limit = plan_data['email_limit']
+                print(f"🔍 Setting quota for {plan_name} plan: {email_limit} emails/month")
+            else:
+                # Fallback to free plan
+                free_plan = plan_model.get_plan_by_name('free')
+                email_limit = free_plan['email_limit'] if free_plan else 50
+                print(f"⚠️ Plan '{plan_name}' not found, using fallback quota: {email_limit}")
+            
             cursor.execute('''
                 UPDATE users 
                 SET subscription_plan = %s, subscription_status = 'active', 
-                    subscription_expires = %s, stripe_customer_id = COALESCE(%s, stripe_customer_id)
+                    subscription_expires = %s, stripe_customer_id = COALESCE(%s, stripe_customer_id),
+                    monthly_usage_limit = %s
                 WHERE id = %s
-            ''', (plan_name, expires_at, stripe_customer_id, user_id))
+            ''', (plan_name, expires_at, stripe_customer_id, email_limit, user_id))
             
             conn.commit()
             
@@ -794,7 +824,7 @@ class User:
             success = cursor.rowcount > 0
             
             if success:
-                print(f"✅ [DEBUG] Subscription updated successfully for user {user_id}: {plan_name}")
+                print(f"✅ [DEBUG] Subscription updated successfully for user {user_id}: {plan_name} with {email_limit} emails/month quota")
             else:
                 print(f"❌ [DEBUG] No rows updated for user {user_id} subscription")
             

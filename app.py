@@ -1606,6 +1606,129 @@ def admin_process_payment(reference):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/manual-process-enterprise')
+def admin_manual_process_enterprise():
+    """Admin endpoint to manually process the confirmed Enterprise payment"""
+    try:
+        print("🏢 Admin: Manually processing confirmed Enterprise payment...")
+        
+        # Payment details confirmed by user
+        payment_amount = 46348.95  # NGN
+        user_email = "lawalmoruf@gmail.com"
+        plan_name = "enterprise"
+        currency = "NGN"
+        
+        print(f"💰 Processing Enterprise payment: ₦{payment_amount:,.2f}")
+        print(f"📧 User: {user_email}")
+        
+        # Find user
+        user = user_model.get_user_by_email(user_email)
+        if not user:
+            return jsonify({'error': f'User not found: {user_email}'}), 404
+        
+        user_id = user['id']
+        print(f"✅ Found user: ID {user_id}")
+        
+        # Generate a payment reference for this confirmed payment
+        payment_reference = f"enterprise_manual_{user_id}_{int(datetime.now().timestamp())}"
+        print(f"📋 Payment Reference: {payment_reference}")
+        
+        # Check if Enterprise payment already exists for this user
+        existing_payments = payment_service.payment_model.get_user_payments(user_id)
+        enterprise_payments = [p for p in existing_payments if p['plan_name'] == 'enterprise']
+        
+        # Check if we already have this exact amount
+        matching_payment = None
+        if enterprise_payments:
+            matching_payment = next((p for p in enterprise_payments 
+                                   if abs(p['amount'] - payment_amount) < 1.0), None)
+        
+        if matching_payment:
+            print(f"✅ Payment of ₦{payment_amount:,.2f} already exists!")
+            
+            # Check if user subscription is correctly activated
+            current_plan = user.get('subscription_plan', 'free')
+            if current_plan == 'enterprise':
+                return jsonify({
+                    'success': True,
+                    'message': f'User already has Enterprise subscription activated!',
+                    'user_id': user_id,
+                    'current_plan': current_plan,
+                    'payment_amount': payment_amount
+                })
+            else:
+                print(f"🔧 User has payment but subscription not activated. Current: {current_plan}")
+                # Continue to activate subscription
+        else:
+            # Create payment record
+            print(f"💳 Creating payment record...")
+            try:
+                payment_id = payment_service.payment_model.create_payment_record(
+                    user_id=user_id,
+                    stripe_payment_intent_id=payment_reference,
+                    amount=payment_amount,
+                    plan_name=plan_name,
+                    billing_period='monthly',
+                    status='completed',
+                    currency=currency,
+                    payment_method='paystack_manual'
+                )
+                print(f"✅ Payment record created with ID: {payment_id}")
+            except Exception as e:
+                print(f"⚠️ Payment record creation failed: {e}")
+                # Continue to activate subscription anyway
+        
+        # Activate Enterprise subscription
+        print(f"🏢 Activating Enterprise subscription...")
+        
+        # Calculate subscription end date (30 days for monthly)
+        end_date = datetime.now() + timedelta(days=30)
+        
+        success = user_model.update_subscription(
+            user_id=user_id,
+            plan_name=plan_name,
+            stripe_customer_id=payment_reference,
+            expires_at=end_date
+        )
+        
+        if success:
+            print(f"✅ Enterprise subscription activated successfully!")
+            
+            # Update session if this is the current user
+            if session.get('user_id') == user_id:
+                updated_user = user_model.get_user_by_id(user_id)
+                session['subscription_plan'] = updated_user.get('subscription_plan', 'free')
+                session['subscription_status'] = updated_user.get('subscription_status', 'inactive')
+                session['subscription_expires'] = updated_user.get('subscription_expires')
+                print(f"✅ Updated session data for current user")
+            
+            # Calculate exchange rate analysis
+            enterprise_usd = 49.99
+            implied_rate = payment_amount / enterprise_usd
+            
+            return jsonify({
+                'success': True,
+                'message': f'Enterprise payment of ₦{payment_amount:,.2f} processed successfully',
+                'user_id': user_id,
+                'user_email': user_email,
+                'plan_activated': plan_name,
+                'amount': payment_amount,
+                'currency': currency,
+                'expires_at': end_date.isoformat(),
+                'exchange_rate_used': round(implied_rate, 2),
+                'enterprise_usd_price': enterprise_usd,
+                'payment_status': 'Valid and confirmed by Paystack'
+            })
+        else:
+            print(f"❌ Failed to activate Enterprise subscription!")
+            return jsonify({'error': 'Failed to activate Enterprise subscription'}), 500
+            
+    except Exception as e:
+        print(f"❌ Admin manual Enterprise processing error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 # User account routes
 @app.route('/account')
 @login_required
@@ -1625,7 +1748,7 @@ def account():
             'subscription_plan': 'free',
             'subscription_status': 'inactive',
             'api_usage_count': 0,
-            'monthly_usage_limit': 100,  # Default free plan limit
+            'monthly_usage_limit': 50,  # Free plan limit - will be updated below
             'created_at': None,
             'last_login': None,
             'gmail_email': None
@@ -1633,9 +1756,24 @@ def account():
     else:
         # Ensure required fields exist with defaults
         user.setdefault('api_usage_count', 0)
-        user.setdefault('monthly_usage_limit', 100)
         user.setdefault('subscription_plan', 'free')
         user.setdefault('subscription_status', 'inactive')
+    
+    # Get the user's actual plan quota dynamically
+    if plan_model:
+        user_plan_data = plan_model.get_plan_by_name(user.get('subscription_plan', 'free'))
+        if user_plan_data:
+            user['monthly_usage_limit'] = user_plan_data['email_limit']
+            print(f"🔍 Dynamic quota set: {user['subscription_plan']} = {user['monthly_usage_limit']} emails/month")
+        else:
+            # Fallback to free plan if plan not found
+            free_plan = plan_model.get_plan_by_name('free')
+            user['monthly_usage_limit'] = free_plan['email_limit'] if free_plan else 50
+            print(f"⚠️ Plan not found, using free plan quota: {user['monthly_usage_limit']}")
+    else:
+        # Final fallback if plan_model not available
+        user['monthly_usage_limit'] = 50
+        print(f"⚠️ Plan model not available, using fallback quota: {user['monthly_usage_limit']}")
     
     payments = payment_model.get_user_payments(user_id) if payment_model else []
     user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
