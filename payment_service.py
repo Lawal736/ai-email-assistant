@@ -44,10 +44,55 @@ class PaymentService:
         self.w3 = None
         self.initialize_web3()
         
-        self.db_manager = DatabaseManager()
-        self.user_model = User(self.db_manager)
-        self.plan_model = SubscriptionPlan(self.db_manager)
-        self.payment_model = PaymentRecord(self.db_manager)
+        # Initialize database models with same logic as main app
+        try:
+            # Check if we should use PostgreSQL
+            database_type = os.getenv('DATABASE_TYPE', 'sqlite').lower()
+            
+            if database_type == 'postgresql':
+                # Import PostgreSQL models
+                from models_postgresql import DatabaseManager as PGDatabaseManager, User as PGUser, SubscriptionPlan as PGSubscriptionPlan, PaymentRecord as PGPaymentRecord
+                
+                # Use PostgreSQL configuration
+                pg_config = {
+                    'host': os.getenv('DB_HOST'),
+                    'port': int(os.getenv('DB_PORT', 25060)),
+                    'user': os.getenv('DB_USER'),
+                    'password': os.getenv('DB_PASSWORD'),
+                    'database': os.getenv('DB_NAME'),
+                    'sslmode': os.getenv('DB_SSLMODE', 'require')
+                }
+                
+                print(f"💳 PaymentService using PostgreSQL database: {pg_config['host']}:{pg_config['port']}")
+                
+                self.db_manager = PGDatabaseManager(pg_config)
+                self.user_model = PGUser(self.db_manager)
+                self.plan_model = PGSubscriptionPlan(self.db_manager)
+                self.payment_model = PGPaymentRecord(self.db_manager)
+            else:
+                # Use SQLite (default)
+                print("💳 PaymentService using SQLite database")
+                self.db_manager = DatabaseManager()
+                self.user_model = User(self.db_manager)
+                self.plan_model = SubscriptionPlan(self.db_manager)
+                self.payment_model = PaymentRecord(self.db_manager)
+                
+        except Exception as e:
+            print(f"⚠️ PaymentService database initialization failed: {e}")
+            # Fallback to SQLite if PostgreSQL fails
+            try:
+                print("🔄 PaymentService falling back to SQLite...")
+                self.db_manager = DatabaseManager()
+                self.user_model = User(self.db_manager)
+                self.plan_model = SubscriptionPlan(self.db_manager)
+                self.payment_model = PaymentRecord(self.db_manager)
+                print("✅ PaymentService SQLite fallback successful")
+            except Exception as fallback_error:
+                print(f"❌ PaymentService SQLite fallback also failed: {fallback_error}")
+                self.db_manager = None
+                self.user_model = None
+                self.plan_model = None
+                self.payment_model = None
     
     def initialize_web3(self):
         """Initialize Web3 connection for crypto payments"""
