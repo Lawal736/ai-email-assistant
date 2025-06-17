@@ -1254,6 +1254,18 @@ class User:
         conn.commit()
         conn.close()
 
+    def delete_gmail_token(self, user_id):
+        """Delete user's Gmail token from both user_tokens and users tables"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('DELETE FROM user_tokens WHERE user_id = ?', (user_id,))
+            cursor.execute('UPDATE users SET gmail_token = NULL WHERE id = ?', (user_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        return True
+
 class SubscriptionPlan:
     """Subscription plan model"""
     

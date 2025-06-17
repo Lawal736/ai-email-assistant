@@ -326,11 +326,15 @@ function disconnectGmail() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Show success message and reload page
+            // Show success message and reload page if instructed
             showAlert('success', 'Gmail account disconnected successfully!');
-            setTimeout(() => {
+            if (data.reload) {
                 window.location.reload();
-            }, 1500);
+            } else {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
         } else {
             // Show error message
             showAlert('danger', data.error || 'Failed to disconnect Gmail account');

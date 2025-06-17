@@ -542,11 +542,15 @@ def dashboard():
     
     if not gmail_token:
         print("❌ No Gmail token found in database")
-        if token_recovery_attempted:
-            flash('Your Gmail connection appears to be lost. Please reconnect your Gmail account.', 'error')
-        else:
-            flash('Please connect your Gmail account to continue.', 'warning')
-        return redirect(url_for('connect_gmail'))
+        # Instead of redirecting, render dashboard with no emails and not connected state
+        return render_template('dashboard.html', 
+                             emails=[], 
+                             email_threads={},
+                             summary="Gmail not connected. Please connect your Gmail account.",
+                             action_items=[],
+                             recommendations=[],
+                             date=datetime.now().strftime('%B %d, %Y'),
+                             ai_processing=False)
     
     try:
         # Validate the token before proceeding
@@ -807,7 +811,7 @@ def api_disconnect_gmail():
         
         # Remove Gmail token and email from database
         if user_model:
-            user_model.update_gmail_token(user_id, None, None)
+            user_model.delete_gmail_token(user_id)
             user_model.set_gmail_email(user_id, None)
             print(f"✅ Gmail token and email removed for user {user_id}")
         # Clear Gmail authentication from session
@@ -817,7 +821,8 @@ def api_disconnect_gmail():
         
         return jsonify({
             'success': True,
-            'message': 'Gmail account disconnected successfully'
+            'message': 'Gmail account disconnected successfully',
+            'reload': True  # Instruct frontend to reload page for session update
         })
     except Exception as e:
         print(f"❌ Error disconnecting Gmail: {str(e)}")
