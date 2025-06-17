@@ -7,17 +7,57 @@ by manually creating the payment record and updating the subscription.
 import os
 import sys
 from datetime import datetime, timedelta
-from models import DatabaseManager, User, PaymentRecord
 
 def fix_cryptocassava_direct():
     """Directly fix the database for cryptocassava@gmail.com"""
     
     print("🔧 Directly fixing database for cryptocassava@gmail.com...")
     
-    # Initialize services
-    db_manager = DatabaseManager()
-    user_model = User(db_manager)
-    payment_model = PaymentRecord(db_manager)
+    # Initialize services with database detection
+    try:
+        # Check if we should use PostgreSQL
+        database_type = os.getenv('DATABASE_TYPE', 'sqlite').lower()
+        
+        if database_type == 'postgresql':
+            # Import PostgreSQL models
+            from models_postgresql import DatabaseManager as PGDatabaseManager, User as PGUser, PaymentRecord as PGPaymentRecord
+            
+            # Use PostgreSQL configuration
+            pg_config = {
+                'host': os.getenv('DB_HOST'),
+                'port': int(os.getenv('DB_PORT', 25060)),
+                'user': os.getenv('DB_USER'),
+                'password': os.getenv('DB_PASSWORD'),
+                'database': os.getenv('DB_NAME'),
+                'sslmode': os.getenv('DB_SSLMODE', 'require')
+            }
+            
+            print(f"🔧 Fix using PostgreSQL database: {pg_config['host']}:{pg_config['port']}")
+            
+            db_manager = PGDatabaseManager(pg_config)
+            user_model = PGUser(db_manager)
+            payment_model = PGPaymentRecord(db_manager)
+        else:
+            # Use SQLite (default)
+            from models import DatabaseManager, User, PaymentRecord
+            print("🔧 Fix using SQLite database")
+            db_manager = DatabaseManager()
+            user_model = User(db_manager)
+            payment_model = PaymentRecord(db_manager)
+            
+    except Exception as e:
+        print(f"⚠️ Database initialization failed: {e}")
+        # Fallback to SQLite if PostgreSQL fails
+        try:
+            print("🔄 Falling back to SQLite...")
+            from models import DatabaseManager, User, PaymentRecord
+            db_manager = DatabaseManager()
+            user_model = User(db_manager)
+            payment_model = PaymentRecord(db_manager)
+            print("✅ SQLite fallback successful")
+        except Exception as fallback_error:
+            print(f"❌ SQLite fallback also failed: {fallback_error}")
+            return False
     
     # Get user by email
     user = user_model.get_user_by_email('cryptocassava@gmail.com')

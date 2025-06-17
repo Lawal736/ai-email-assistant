@@ -6,13 +6,54 @@ import os
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import sqlite3
-from models import DatabaseManager
 
 class CurrencyService:
     """Service for handling currency conversion and localization"""
     
     def __init__(self):
-        self.db_manager = DatabaseManager()
+        # Initialize database models with same logic as main app
+        try:
+            # Check if we should use PostgreSQL
+            database_type = os.getenv('DATABASE_TYPE', 'sqlite').lower()
+            
+            if database_type == 'postgresql':
+                # Import PostgreSQL models
+                from models_postgresql import DatabaseManager as PGDatabaseManager
+                
+                # Use PostgreSQL configuration
+                pg_config = {
+                    'host': os.getenv('DB_HOST'),
+                    'port': int(os.getenv('DB_PORT', 25060)),
+                    'user': os.getenv('DB_USER'),
+                    'password': os.getenv('DB_PASSWORD'),
+                    'database': os.getenv('DB_NAME'),
+                    'sslmode': os.getenv('DB_SSLMODE', 'require')
+                }
+                
+                print(f"💱 CurrencyService using PostgreSQL database: {pg_config['host']}:{pg_config['port']}")
+                self.db_manager = PGDatabaseManager(pg_config)
+                self.db_type = 'postgresql'
+            else:
+                # Use SQLite (default)
+                from models import DatabaseManager
+                print("💱 CurrencyService using SQLite database")
+                self.db_manager = DatabaseManager()
+                self.db_type = 'sqlite'
+                
+        except Exception as e:
+            print(f"⚠️ CurrencyService database initialization failed: {e}")
+            # Fallback to SQLite if PostgreSQL fails
+            try:
+                print("🔄 CurrencyService falling back to SQLite...")
+                from models import DatabaseManager
+                self.db_manager = DatabaseManager()
+                self.db_type = 'sqlite'
+                print("✅ CurrencyService SQLite fallback successful")
+            except Exception as fallback_error:
+                print(f"❌ CurrencyService SQLite fallback also failed: {fallback_error}")
+                self.db_manager = None
+                self.db_type = None
+        
         self.exchange_rates = {}
         self.last_update = None
         self.update_interval = timedelta(hours=1)  # Update rates every hour
@@ -263,13 +304,15 @@ class CurrencyService:
     def save_user_currency_preference(self, user_id: int, currency: str):
         """Save user's currency preference to database"""
         try:
+            if not self.db_manager:
+                print(f"⚠️ Database not available, cannot save currency preference")
+                return
+                
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             
-            # Detect database type and use appropriate syntax
-            is_postgresql = hasattr(self.db_manager, 'db_config')  # PostgreSQL has db_config
-            
-            if is_postgresql:
+            # Use self.db_type for database detection
+            if self.db_type == 'postgresql':
                 # PostgreSQL syntax with %s placeholders
                 cursor.execute('SELECT id FROM user_preferences WHERE user_id = %s', (user_id,))
                 exists = cursor.fetchone()
@@ -318,13 +361,15 @@ class CurrencyService:
     def get_user_currency_preference(self, user_id: int) -> str:
         """Get user's saved currency preference"""
         try:
+            if not self.db_manager:
+                print(f"⚠️ Database not available, using default currency")
+                return self.default_currency
+                
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             
-            # Detect database type and use appropriate syntax
-            is_postgresql = hasattr(self.db_manager, 'db_config')  # PostgreSQL has db_config
-            
-            if is_postgresql:
+            # Use self.db_type for database detection
+            if self.db_type == 'postgresql':
                 cursor.execute('SELECT currency FROM user_preferences WHERE user_id = %s', (user_id,))
             else:
                 cursor.execute('SELECT currency FROM user_preferences WHERE user_id = ?', (user_id,))
