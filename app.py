@@ -2207,6 +2207,7 @@ Upgrade to Pro for detailed AI analysis including:
             else:
                 print('STEP 15a: Calling ai_service.analyze_email')
                 analysis_result = ai_service.analyze_email(email_content, analysis_type)
+                analysis_result['success'] = True
             print('STEP 16: AI analysis call completed')
         except Exception as ai_error:
             debug_info['ai_error'] = str(ai_error)
