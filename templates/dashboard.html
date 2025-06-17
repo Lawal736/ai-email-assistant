@@ -1506,8 +1506,12 @@ function viewEmail(emailId) {
 }
 
 function generateResponse(emailId) {
+    console.log('🔍 [DEBUG] generateResponse called with emailId:', emailId);
+    console.log('🔍 [DEBUG] Current email data:', emails.find(e => e.id === emailId));
+    
     currentEmailId = emailId;
     new bootstrap.Modal(document.getElementById('responseModal')).show();
+    
     // Show loading
     document.getElementById('responseContent').innerHTML = `
         <div class="loading">
@@ -1515,18 +1519,36 @@ function generateResponse(emailId) {
             <p class="mt-2">Generating response...</p>
         </div>
     `;
+    
+    const requestBody = { email_id: emailId };
+    console.log('🔍 [DEBUG] Request body:', requestBody);
+    console.log('🔍 [DEBUG] Making API call to /api/generate-response...');
+    
     // Call backend API to generate response
     fetch('/api/generate-response', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email_id: emailId }),
+        body: JSON.stringify(requestBody),
         credentials: 'include'
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('🔍 [DEBUG] Response status:', response.status);
+        console.log('🔍 [DEBUG] Response headers:', Object.fromEntries(response.headers.entries()));
+        
+        if (!response.ok) {
+            console.error('❌ [DEBUG] Response not OK:', response.status, response.statusText);
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return response.json();
+    })
     .then(data => {
+        console.log('🔍 [DEBUG] Response data:', data);
+        
         if (data.success) {
+            console.log('✅ [DEBUG] Success - generating response display');
             document.getElementById('responseContent').innerHTML = `
                 <div class="alert alert-success">
                     <i class="fas fa-magic me-2"></i>
@@ -1537,19 +1559,29 @@ function generateResponse(emailId) {
                 </div>
             `;
         } else {
+            console.error('❌ [DEBUG] API returned success=false:', data.error);
             document.getElementById('responseContent').innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong>Error:</strong> ${data.error || 'Failed to generate response.'}
+                    ${data.debug ? `<br><small class="text-muted">Debug: ${JSON.stringify(data.debug)}</small>` : ''}
                 </div>
             `;
         }
     })
     .catch(error => {
+        console.error('❌ [DEBUG] Fetch error:', error);
+        console.error('❌ [DEBUG] Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        
         document.getElementById('responseContent').innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 <strong>Error:</strong> Failed to generate response. Please try again.
+                <br><small class="text-muted">Debug: ${error.message}</small>
             </div>
         `;
     });

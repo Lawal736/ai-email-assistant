@@ -3235,42 +3235,111 @@ def database_stats_endpoint():
 def api_generate_response():
     """API endpoint to generate an AI response for a given email"""
     import traceback
+    
+    print("🔍 [DEBUG] /api/generate-response called")
+    
     user_id = session.get('user_id')
+    print(f"🔍 [DEBUG] User ID: {user_id}")
+    
     data = request.get_json()
+    print(f"🔍 [DEBUG] Request data: {data}")
+    
     email_id = data.get('email_id')
     if not email_id:
+        print("❌ [DEBUG] Email ID missing from request")
         return jsonify({'success': False, 'error': 'Email ID is required'}), 400
+    
+    print(f"🔍 [DEBUG] Processing email ID: {email_id}")
+    
     try:
         # Check Gmail authentication
+        print("🔍 [DEBUG] Checking Gmail authentication...")
         gmail_token = user_model.get_gmail_token(user_id) if user_model else None
         if not gmail_token:
+            print("❌ [DEBUG] No Gmail token found")
             return jsonify({'success': False, 'error': 'Gmail not connected'}), 401
+        
+        print("🔍 [DEBUG] Gmail token found, setting credentials...")
         gmail_service.set_credentials_from_token(gmail_token)
+        
         if not gmail_service.is_authenticated():
+            print("❌ [DEBUG] Gmail authentication failed")
             return jsonify({'success': False, 'error': 'Gmail authentication expired'}), 401
+        
+        print("✅ [DEBUG] Gmail authentication successful")
+        
         # Fetch the email
+        print(f"🔍 [DEBUG] Fetching email with ID: {email_id}")
         service = gmail_service._get_service()
         email_data = service.users().messages().get(
             userId='me',
             id=email_id,
             format='full'
         ).execute()
+        
+        print(f"🔍 [DEBUG] Email data fetched, parsing...")
         parsed_email = gmail_service._parse_email(email_data)
         if not parsed_email:
+            print("❌ [DEBUG] Failed to parse email data")
             return jsonify({'success': False, 'error': 'Email not found'}), 404
+        
+        print(f"✅ [DEBUG] Email parsed successfully")
+        print(f"🔍 [DEBUG] Email subject: {parsed_email.get('subject', 'No subject')}")
+        print(f"🔍 [DEBUG] Email sender: {parsed_email.get('sender', 'Unknown')}")
+        
         email_content = parsed_email.get('body', '')
         subject = parsed_email.get('subject', '')
         sender = parsed_email.get('sender', '')
+        
+        print(f"🔍 [DEBUG] Email content length: {len(email_content)} characters")
+        print(f"🔍 [DEBUG] Calling AI service to generate response...")
+        
         # Generate AI response
         response_result = ai_service.generate_response_recommendations(email_content, subject, sender)
+        
+        print(f"🔍 [DEBUG] AI response result: {response_result}")
+        
         if response_result.get('success'):
-            return jsonify({'success': True, 'response': response_result['content'], 'model_used': response_result.get('model_used', 'unknown')})
+            print("✅ [DEBUG] AI response generated successfully")
+            return jsonify({
+                'success': True, 
+                'response': response_result['content'], 
+                'model_used': response_result.get('model_used', 'unknown'),
+                'debug': {
+                    'email_id': email_id,
+                    'content_length': len(email_content),
+                    'subject': subject,
+                    'sender': sender
+                }
+            })
         else:
-            return jsonify({'success': False, 'error': response_result.get('error', 'Failed to generate response')}), 500
+            print(f"❌ [DEBUG] AI response generation failed: {response_result.get('error')}")
+            return jsonify({
+                'success': False, 
+                'error': response_result.get('error', 'Failed to generate response'),
+                'debug': {
+                    'email_id': email_id,
+                    'ai_error': response_result.get('error'),
+                    'ai_result': response_result
+                }
+            }), 500
+            
     except Exception as e:
-        print(f"❌ Exception in /api/generate-response: {str(e)}")
+        print(f"❌ [DEBUG] Exception in /api/generate-response: {str(e)}")
+        print(f"❌ [DEBUG] Exception type: {type(e).__name__}")
+        print(f"❌ [DEBUG] Full traceback:")
         print(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)}), 500
+        
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'debug': {
+                'email_id': email_id,
+                'exception_type': type(e).__name__,
+                'exception_message': str(e),
+                'traceback': traceback.format_exc()
+            }
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
