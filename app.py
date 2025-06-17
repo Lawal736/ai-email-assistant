@@ -553,7 +553,9 @@ def dashboard():
         
         # Get today's emails
         print("📧 Fetching today's emails...")
-        emails = gmail_service.get_todays_emails(max_results=50)
+        plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
+        print(f"🔍 [DEBUG] User plan for email fetching: {plan}")
+        emails = gmail_service.get_todays_emails(max_results=50, user_plan=plan)
         print(f"📧 Found {len(emails)} emails for today")
         
         # Filter emails if needed
