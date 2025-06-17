@@ -808,10 +808,11 @@ def api_disconnect_gmail():
         # Remove Gmail token and email from database
         if user_model:
             user_model.update_gmail_token(user_id, None, None)
+            user_model.set_gmail_email(user_id, None)
             print(f"✅ Gmail token and email removed for user {user_id}")
-        
         # Clear Gmail authentication from session
         session.pop('gmail_authenticated', None)
+        session.pop('gmail_email', None)
         print(f"✅ Gmail authentication cleared from session for user {user_id}")
         
         return jsonify({

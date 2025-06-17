@@ -1246,6 +1246,14 @@ class User:
         conn.close()
         return users
 
+    def set_gmail_email(self, user_id, gmail_email):
+        """Set or clear the user's linked Gmail email address"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET gmail_email = ? WHERE id = ?', (gmail_email, user_id))
+        conn.commit()
+        conn.close()
+
 class SubscriptionPlan:
     """Subscription plan model"""
     
