@@ -736,22 +736,29 @@ Format your response in clear sections with bullet points where appropriate.
         
         return formatted
     
+    def _extract_email_address(self, sender: str) -> str:
+        """Extract the email address from a sender string"""
+        match = re.search(r'<(.+?)>', sender)
+        if match:
+            return match.group(1).strip().lower()
+        return sender.strip().lower()
+
     def process_emails_hybrid(self, emails: List[Dict[str, Any]], user: Dict[str, Any], ai_priority_toggle: bool) -> List[Dict[str, Any]]:
-        """Hybrid prioritization: LLM for Pro/Enterprise with toggle, keyword for Free/obvious low-priority"""
         processed_emails = []
         user_plan = (user or {}).get('subscription_plan', 'free')
         vip_senders = set((user or {}).get('vip_senders', []))  # Assume this is a list of emails/names
+        vip_senders = set(e.strip().lower() for e in vip_senders)
         print(f"[DEBUG] VIP senders for user: {vip_senders}")
         for email in emails:
             processed_email = email.copy()
             print(f"[DEBUG] Processing email from sender: {processed_email.get('sender')}")
+            sender_email = self._extract_email_address(processed_email.get('sender', ''))
             use_llm = self._should_use_llm_priority(processed_email, user_plan, ai_priority_toggle, vip_senders)
             print(f"[DEBUG] use_llm for sender {processed_email.get('sender')}: {use_llm}")
             if use_llm and self.ai_service:
                 # Call LLM for priority
-                sender = (processed_email.get('sender') or '').lower()
                 prompt_prefix = ''
-                if sender in vip_senders:
+                if sender_email in vip_senders:
                     prompt_prefix = 'The following email is from a VIP sender. Always assign it a HIGH or URGENT priority unless it is clearly spam or irrelevant.\n\n'
                 prompt = f"""{prompt_prefix}You are an AI email assistant. Given the following email, assign a priority (urgent, high, normal, low) and explain your reasoning.\nEmail:\nSubject: {processed_email.get('subject','')}\nFrom: {processed_email.get('sender','')}\nBody: {processed_email.get('body','')}\nOutput JSON: {{\"priority\": \"...\", \"reason\": \"...\"}}\n"""
                 try:
@@ -759,8 +766,8 @@ Format your response in clear sections with bullet points where appropriate.
                     if llm_result and isinstance(llm_result, dict):
                         # VIP override: if sender is VIP and priority is not high/urgent, force high
                         priority = llm_result.get('priority', 'normal').lower()
-                        if sender in vip_senders and priority not in ['high', 'urgent']:
-                            print(f"[VIP OVERRIDE] Forcing priority to 'high' for VIP sender: {sender}")
+                        if sender_email in vip_senders and priority not in ['high', 'urgent']:
+                            print(f"[VIP OVERRIDE] Forcing priority to 'high' for VIP sender: {sender_email}")
                             priority = 'high'
                             llm_result['reason'] = f"VIP sender override: {llm_result.get('reason', '')}"
                         processed_email['ai_priority'] = priority
