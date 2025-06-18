@@ -1819,28 +1819,16 @@ def account():
             'subscription_plan': 'free',
             'subscription_status': 'inactive',
             'api_usage_count': 0,
-            'monthly_usage_limit': 100,  # Free plan limit - will be updated below
-            'created_at': None,
-            'last_login': None,
-            'gmail_email': None
+            'monthly_usage_limit': 100,
+            'currency': 'USD',
         }
-    else:
-        # Ensure required fields exist with defaults
-        user.setdefault('api_usage_count', 0)
-        user.setdefault('subscription_plan', 'free')
-        user.setdefault('subscription_status', 'inactive')
-        user.setdefault('gmail_email', None)
     
-    # Always set monthly_usage_limit from the current plan (not DB value)
-    plan_limit = 100  # Default fallback
-    if plan_model and user and user.get('subscription_plan'):
-        plan = plan_model.get_plan_by_name(user['subscription_plan'])
-        if plan and 'email_limit' in plan:
-            plan_limit = plan['email_limit']
-    user['monthly_usage_limit'] = plan_limit
-    
-    # Ensure payments is defined before use
     payments = payment_model.get_user_payments(user_id) if payment_model else []
+    
+    # Set user_currency before formatting payments
+    user_currency = user.get('currency') or session.get('currency') or 'USD'
+    for payment in payments:
+        payment['formatted_amount'] = currency_service.format_amount(payment['amount'], payment.get('currency', user_currency))
     
     # Get Gmail profile information if Gmail is connected and token is valid
     gmail_profile = None
@@ -1866,7 +1854,6 @@ def account():
     
     # Format payment amounts in local currency for account overview
     for payment in payments:
-        payment['formatted_amount'] = currency_service.format_amount(payment['amount'], payment.get('currency', user_currency))
         payment['currency_symbol'] = currency_service.get_currency_symbol(payment.get('currency', user_currency))
         payment['payment_method'] = payment.get('payment_method') or 'Credit Card'
         payment['description'] = f"{payment.get('plan_name', 'Subscription')} ({payment.get('billing_period', '').capitalize()})"
