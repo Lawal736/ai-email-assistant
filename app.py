@@ -653,7 +653,7 @@ def dashboard():
         # Get current date
         current_date = datetime.now().strftime('%B %d, %Y')
         
-        # Return dashboard immediately with basic data
+        ai_priority_toggle = session.get('ai_priority_toggle', True)  # Default ON
         return render_template('dashboard.html', 
                              emails=processed_emails, 
                              email_threads=email_threads,
@@ -661,7 +661,8 @@ def dashboard():
                              action_items=[],
                              recommendations=[],
                              date=current_date,
-                             ai_processing=False)
+                             ai_processing=False,
+                             ai_priority_toggle=ai_priority_toggle)
     
     except Exception as e:
         print(f"❌ Error in dashboard: {str(e)}")
@@ -3461,6 +3462,14 @@ def enforce_gmail_consistency(user_id, user_model):
     if (gmail_token and not gmail_email) or (gmail_email and not gmail_token):
         user_model.delete_gmail_token(user_id)
         user_model.set_gmail_email(user_id, None)
+
+@app.route('/toggle-ai-priority', methods=['POST'])
+@login_required
+def toggle_ai_priority():
+    """Toggle AI-powered priority ranking for the current user session"""
+    current = session.get('ai_priority_toggle', True)
+    session['ai_priority_toggle'] = not current
+    return jsonify({'ai_priority_toggle': session['ai_priority_toggle']})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
