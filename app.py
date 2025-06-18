@@ -16,6 +16,9 @@ from currency_service import currency_service
 import time
 import re
 import traceback
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Load environment variables
 load_dotenv()
@@ -302,6 +305,42 @@ def logout():
     flash('Logged out successfully', 'success')
     return response
 
+# Utility: Send password reset email
+
+def send_password_reset_email(to_email, reset_link):
+    smtp_host = os.environ.get('SMTP_HOST')
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
+    smtp_user = os.environ.get('SMTP_USER')
+    smtp_pass = os.environ.get('SMTP_PASS')
+    from_email = os.environ.get('FROM_EMAIL', smtp_user)
+    
+    subject = 'Password Reset Request - AI Email Assistant'
+    body = f"""
+    <p>Hello,</p>
+    <p>You requested a password reset for your AI Email Assistant account.</p>
+    <p>Click the link below to reset your password. This link will expire in 24 hours:</p>
+    <p><a href='{reset_link}'>{reset_link}</a></p>
+    <p>If you did not request this, you can ignore this email.</p>
+    <p>Best regards,<br>AI Email Assistant Team</p>
+    """
+    
+    msg = MIMEMultipart()
+    msg['From'] = from_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'html'))
+    
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(from_email, to_email, msg.as_string())
+        print(f"✅ Password reset email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send password reset email to {to_email}: {e}")
+        return False
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     """Forgot password page"""
@@ -326,9 +365,13 @@ def forgot_password():
             
             # Store reset token in database
             if user_model.create_password_reset_token(user_data['id'], reset_token, expires_at):
-                # In a real implementation, you would send an email here
-                # For now, we'll just show a success message
-                flash('If an account with that email exists, a password reset link has been sent.', 'success')
+                # Send password reset email
+                reset_link = url_for('reset_password', token=reset_token, _external=True)
+                email_sent = send_password_reset_email(user_data['email'], reset_link)
+                if email_sent:
+                    flash('If an account with that email exists, a password reset link has been sent.', 'success')
+                else:
+                    flash('Error sending password reset email. Please try again later.', 'error')
             else:
                 flash('Error creating reset token. Please try again.', 'error')
         else:
