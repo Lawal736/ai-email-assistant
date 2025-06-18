@@ -734,4 +734,68 @@ Format your response in clear sections with bullet points where appropriate.
         for i, point in enumerate(key_points[:5], 1):  # Limit to top 5
             formatted += f"{i}. {point}\n"
         
-        return formatted 
+        return formatted
+    
+    def process_emails_hybrid(self, emails: List[Dict[str, Any]], user: Dict[str, Any], ai_priority_toggle: bool) -> List[Dict[str, Any]]:
+        """Hybrid prioritization: LLM for Pro/Enterprise with toggle, keyword for Free/obvious low-priority"""
+        processed_emails = []
+        user_plan = (user or {}).get('subscription_plan', 'free')
+        vip_senders = set((user or {}).get('vip_senders', []))  # Assume this is a list of emails/names
+        for email in emails:
+            processed_email = email.copy()
+            use_llm = self._should_use_llm_priority(processed_email, user_plan, ai_priority_toggle, vip_senders)
+            if use_llm and self.ai_service:
+                # Call LLM for priority
+                prompt = f"""
+You are an AI email assistant. Given the following email, assign a priority (urgent, high, normal, low) and explain your reasoning.
+Email:
+Subject: {processed_email.get('subject','')}
+From: {processed_email.get('sender','')}
+Body: {processed_email.get('body','')}
+Output JSON: {{"priority": "...", "reason": "..."}}
+"""
+                try:
+                    llm_result = self.ai_service.assign_priority(prompt)
+                    if llm_result and isinstance(llm_result, dict):
+                        processed_email['ai_priority'] = llm_result.get('priority', 'normal')
+                        processed_email['ai_priority_reason'] = llm_result.get('reason', '')
+                        processed_email['priority'] = llm_result.get('priority', 'normal')
+                    else:
+                        processed_email['priority'] = self._keyword_priority(processed_email)
+                except Exception as e:
+                    print(f"[LLM Priority Error] {e}")
+                    processed_email['priority'] = self._keyword_priority(processed_email)
+            else:
+                processed_email['priority'] = self._keyword_priority(processed_email)
+            processed_emails.append(processed_email)
+        processed_emails.sort(key=lambda x: (self._priority_to_number(x['priority']), x['date']), reverse=True)
+        return processed_emails
+
+    def _should_use_llm_priority(self, email, user_plan, ai_priority_toggle, vip_senders):
+        # Only for Pro/Enterprise with toggle on
+        if user_plan not in ['pro', 'enterprise'] or not ai_priority_toggle:
+            return False
+        # Skip obvious low-priority
+        subject = (email.get('subject') or '').lower()
+        sender = (email.get('sender') or '').lower()
+        if any(kw in subject for kw in ['newsletter', 'promotion', 'unsubscribe', 'marketing', 'sale', 'offer']):
+            return False
+        # VIP senders or focus threads always use LLM
+        if sender in vip_senders:
+            return True
+        # Otherwise, use LLM for new emails (no ai_priority cached)
+        if not email.get('ai_priority'):
+            return True
+        return False
+
+    def _keyword_priority(self, email):
+        subject = (email.get('subject') or '').lower()
+        body = (email.get('body') or '').lower()
+        high_priority = ['urgent', 'asap', 'emergency', 'critical', 'deadline']
+        medium_priority = ['meeting', 'call', 'discussion', 'review', 'update']
+        if any(kw in subject or kw in body for kw in high_priority):
+            return 'high'
+        elif any(kw in subject or kw in body for kw in medium_priority):
+            return 'medium'
+        else:
+            return 'low' 
