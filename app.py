@@ -1839,6 +1839,9 @@ def account():
             plan_limit = plan['email_limit']
     user['monthly_usage_limit'] = plan_limit
     
+    # Ensure payments is defined before use
+    payments = payment_model.get_user_payments(user_id) if payment_model else []
+    
     # Get Gmail profile information if Gmail is connected and token is valid
     gmail_profile = None
     gmail_token = user_model.get_gmail_token(user_id) if user_model else None
