@@ -432,6 +432,36 @@ Format the summary in a clear, structured way."""
             else:
                 raise e
 
+    def assign_priority(self, prompt: str) -> dict:
+        """
+        Assign a priority to an email using the LLM. Expects a JSON response with 'priority' and 'reason'.
+        """
+        try:
+            result = self.analyze_text(prompt, max_tokens=300)
+            import json
+            try:
+                parsed = json.loads(result)
+                return {
+                    'priority': parsed.get('priority', 'normal'),
+                    'reason': parsed.get('reason', '')
+                }
+            except Exception:
+                # Fallback: try to extract priority from text
+                lower = result.lower()
+                if 'high' in lower:
+                    return {'priority': 'high', 'reason': result}
+                elif 'medium' in lower:
+                    return {'priority': 'medium', 'reason': result}
+                elif 'low' in lower:
+                    return {'priority': 'low', 'reason': result}
+                elif 'urgent' in lower:
+                    return {'priority': 'urgent', 'reason': result}
+                else:
+                    return {'priority': 'normal', 'reason': result}
+        except Exception as e:
+            print(f"[assign_priority ERROR] {e}")
+            return {'priority': 'normal', 'reason': str(e)}
+
 # Legacy OpenAI service for backward compatibility
 class AIService:
     """
