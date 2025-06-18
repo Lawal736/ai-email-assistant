@@ -741,9 +741,12 @@ Format your response in clear sections with bullet points where appropriate.
         processed_emails = []
         user_plan = (user or {}).get('subscription_plan', 'free')
         vip_senders = set((user or {}).get('vip_senders', []))  # Assume this is a list of emails/names
+        print(f"[DEBUG] VIP senders for user: {vip_senders}")
         for email in emails:
             processed_email = email.copy()
+            print(f"[DEBUG] Processing email from sender: {processed_email.get('sender')}")
             use_llm = self._should_use_llm_priority(processed_email, user_plan, ai_priority_toggle, vip_senders)
+            print(f"[DEBUG] use_llm for sender {processed_email.get('sender')}: {use_llm}")
             if use_llm and self.ai_service:
                 # Call LLM for priority
                 prompt = f"""
@@ -778,10 +781,12 @@ Output JSON: {{"priority": "...", "reason": "..."}}
         # Skip obvious low-priority
         subject = (email.get('subject') or '').lower()
         sender = (email.get('sender') or '').lower()
+        print(f"[DEBUG] Checking if sender '{sender}' is in VIP senders: {vip_senders}")
         if any(kw in subject for kw in ['newsletter', 'promotion', 'unsubscribe', 'marketing', 'sale', 'offer']):
             return False
         # VIP senders or focus threads always use LLM
         if sender in vip_senders:
+            print(f"[DEBUG] VIP prioritization triggered for sender: {sender}")
             return True
         # Otherwise, use LLM for new emails (no ai_priority cached)
         if not email.get('ai_priority'):

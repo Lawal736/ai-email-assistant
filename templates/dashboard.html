@@ -379,11 +379,22 @@
                                             <small class="text-muted">{{ email.body_preview }}</small>
                                         </td>
                                         <td>
+                                            {% set badge_class = '' %}
                                             {% if ai_priority_toggle %}
-                                                <span class="badge priority-{{ email.ai_priority or 'normal' }}">{{ email.ai_priority|title if email.ai_priority else 'Normal' }}{% if email.ai_priority %} (AI){% endif %}</span>
+                                                {% set p = email.ai_priority or 'normal' %}
                                             {% else %}
-                                                <span class="badge priority-{{ email.priority or 'normal' }}">{{ email.priority|title if email.priority else 'Normal' }}</span>
+                                                {% set p = email.priority or 'normal' %}
                                             {% endif %}
+                                            {% if p.lower() in ['urgent', 'high'] %}
+                                                {% set badge_class = 'bg-danger text-white' %}
+                                            {% elif p.lower() == 'medium' %}
+                                                {% set badge_class = 'bg-warning text-dark' %}
+                                            {% elif p.lower() == 'low' %}
+                                                {% set badge_class = 'bg-secondary text-white' %}
+                                            {% else %}
+                                                {% set badge_class = 'bg-primary text-white' %}
+                                            {% endif %}
+                                            <span class="badge {{ badge_class }}">{{ p|title }}{% if ai_priority_toggle and email.ai_priority %} (AI){% endif %}</span>
                                         </td>
                                         <td>
                                             <span class="badge bg-secondary">{{ email.category|title if email.category else 'Other' }}</span>
