@@ -200,16 +200,12 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-6">
+                            {% set usage_percentage = (usage_count / usage_limit * 100) if usage_limit > 0 else 0 %}
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Emails Processed This Month</label>
                                 <div class="d-flex align-items-center">
-                                    {% set usage_count = user.api_usage_count or 0 %}
-                                    {% set usage_limit = user.monthly_usage_limit or 100 %}
-                                    {% set usage_percentage = (usage_count / usage_limit * 100) if usage_limit > 0 else 0 %}
                                     <div class="progress flex-grow-1 me-3" style="height: 20px;">
-                                        <div class="progress-bar bg-{{ 'danger' if usage_percentage > 90 else 'warning' if usage_percentage > 70 else 'success' }}" 
-                                             style="width: {{ usage_percentage }}%">
-                                        </div>
+                                        <div class="progress-bar bg-{{ 'danger' if usage_percentage > 90 else 'warning' if usage_percentage > 70 else 'success' }}" style="width: {{ usage_percentage }}%"></div>
                                     </div>
                                     <span class="fw-bold">{{ usage_count }} / {{ usage_limit }}</span>
                                 </div>
