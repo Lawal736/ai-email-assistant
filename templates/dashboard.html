@@ -805,24 +805,11 @@ let currentEmailId = null;
 let emailThreads = {{ email_threads|tojson }};
 let emails = {{ emails|tojson }};
 
-// Debug: Log the emailThreads structure
-console.log("🔍 Email Threads Debug:");
-console.log("emailThreads type:", typeof emailThreads);
-console.log("emailThreads keys:", Object.keys(emailThreads));
-console.log("emailThreads full data:", emailThreads);
-
-// Check each thread structure
-Object.entries(emailThreads).forEach(([key, thread]) => {
-    console.log(`Thread ${key}:`, {
-        subject: thread.subject,
-        sender: thread.sender,
-        thread_count: thread.thread_count,
-        emails_type: typeof thread.emails,
-        emails_is_array: Array.isArray(thread.emails),
-        emails_length: thread.emails ? thread.emails.length : 'undefined',
-        emails_content: thread.emails
-    });
-});
+// Debug: Log the emails variable after it is defined
+console.log('🔍 [DEBUG] emails variable at page load:', typeof emails, emails);
+if (!Array.isArray(emails) || emails.length === undefined) {
+    console.error('❌ [ERROR] emails variable is not defined or not an array:', emails);
+}
 
 // Check subscription level for feature access
 function checkSubscriptionLevel(requiredLevel) {
@@ -1562,6 +1549,11 @@ function viewEmail(emailId) {
 }
 
 function generateResponse(emailId) {
+    if (!Array.isArray(emails) || emails.length === undefined) {
+        alert('Error: Email data is not loaded. Please refresh the page or contact support.');
+        console.error('❌ [ERROR] emails variable is not defined or not an array:', emails);
+        return;
+    }
     console.log('🔍 [DEBUG] generateResponse called with emailId:', emailId);
     console.log('🔍 [DEBUG] Current email data:', emails.find(e => e.id === emailId));
     
