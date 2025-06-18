@@ -1880,8 +1880,13 @@ def account():
         else:
             user['formatted_last_login'] = 'Never'
     
-    # Pass the up-to-date user object to the template
-    return render_template('account.html', user=user, payments=payments, gmail_profile=gmail_profile)
+    # Fetch dynamic usage stats from check_usage_limit (shared with subscription page)
+    usage_info = user_model.check_usage_limit(user_id) if user_model else None
+    usage_count = usage_info['usage_count'] if usage_info else 0
+    usage_limit = usage_info['limit'] if usage_info else 100
+    
+    # Pass the up-to-date user object and usage stats to the template
+    return render_template('account.html', user=user, payments=payments, gmail_profile=gmail_profile, usage_count=usage_count, usage_limit=usage_limit)
 
 @app.route('/account/subscription')
 @login_required
