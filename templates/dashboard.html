@@ -1546,6 +1546,7 @@ function viewEmail(emailId) {
         `;
         
         currentEmailId = emailId;
+        console.log('[DEBUG] viewEmail set currentEmailId:', currentEmailId);
         new bootstrap.Modal(document.getElementById('emailModal')).show();
     }
 }
