@@ -48,7 +48,7 @@
                         <input type="checkbox" id="toggleAIPriorityBtn" class="form-check-input ms-2" style="cursor:pointer;" {% if ai_priority_toggle %}checked{% endif %} onclick="toggleAIPriority()">
                     </div>
                     <div>
-                        <a href="#" class="text-warning fw-bold" style="font-size: 0.95em;">
+                        <a href="#" class="text-warning fw-bold" style="font-size: 0.95em;" onclick="showVipModal(event)">
                             <i class="fas fa-star me-1"></i>Manage VIP Senders
                         </a>
                     </div>
@@ -467,6 +467,22 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- VIP Senders Modal -->
+<div class="modal fade" id="vipModal" tabindex="-1" aria-labelledby="vipModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="vipModalLabel">Manage VIP Senders</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <!-- VIP management UI goes here -->
+        <p>VIP sender management coming soon...</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -1816,6 +1832,12 @@ function toggleAIPriority() {
     .catch(err => {
         alert('Failed to toggle AI ranking.');
     });
+}
+
+function showVipModal(event) {
+    event.preventDefault();
+    var vipModal = new bootstrap.Modal(document.getElementById('vipModal'));
+    vipModal.show();
 }
 
 document.addEventListener('DOMContentLoaded', function () {
