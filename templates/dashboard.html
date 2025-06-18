@@ -1591,6 +1591,34 @@ function analyzeThread(threadKey) {
 function openEmailModal(emailId) {
     currentEmailId = emailId;
     console.log('[DEBUG] openEmailModal set currentEmailId:', currentEmailId);
+    // Find the email object by ID
+    let emailObj = null;
+    if (Array.isArray(emails)) {
+        emailObj = emails.find(e => e.id === emailId);
+    }
+    const modalBody = document.getElementById('emailModalBody');
+    if (emailObj) {
+        modalBody.innerHTML = `
+            <div class="mb-3">
+                <h5><i class="fas fa-envelope me-2"></i>${emailObj.subject || '(No Subject)'}</h5>
+                <p class="text-muted mb-1"><i class="fas fa-user me-1"></i>${emailObj.sender || ''}</p>
+                <p class="text-muted mb-1"><i class="fas fa-calendar-alt me-1"></i>${emailObj.date || ''}</p>
+                <div class="border-top pt-3">
+                    <h6>Email Content:</h6>
+                    <div class="email-content bg-light p-3 rounded">
+                        ${formatEmailContent(emailObj.body || emailObj.body_preview || '(No content)')}
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        modalBody.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> Email not found or data not loaded.
+            </div>
+        `;
+    }
     new bootstrap.Modal(document.getElementById('emailModal')).show();
 }
 
