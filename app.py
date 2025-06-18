@@ -654,6 +654,17 @@ def connect_gmail():
 def start_gmail_auth():
     """Start Gmail OAuth flow"""
     try:
+        # Always clear in-memory credentials and delete token.json before starting auth
+        if gmail_service:
+            gmail_service.credentials = None
+            gmail_service.service = None
+        token_path = 'token.json'
+        if os.path.exists(token_path):
+            try:
+                os.remove(token_path)
+                print(f"✅ Cleared token.json before starting Gmail OAuth flow")
+            except Exception as e:
+                print(f"⚠️ Could not remove token.json: {e}")
         print("🔍 Starting Gmail OAuth flow...")
         print(f"🔍 User ID: {session.get('user_id')}")
         print(f"🔍 Environment variables:")
@@ -661,7 +672,6 @@ def start_gmail_auth():
         print(f"   - DIGITALOCEAN_APP_PLATFORM: {os.environ.get('DIGITALOCEAN_APP_PLATFORM')}")
         print(f"   - APP_URL: {os.environ.get('APP_URL')}")
         print(f"   - APP_NAME: {os.environ.get('APP_NAME')}")
-        
         auth_url = gmail_service.get_authorization_url()
         print(f"✅ Authorization URL generated: {auth_url[:100]}...")
         return render_template('auth_redirect.html', auth_url=auth_url)
@@ -677,6 +687,17 @@ def start_gmail_auth():
 def oauth2callback():
     """Handle OAuth callback with enhanced token persistence"""
     try:
+        # Always clear in-memory credentials and delete token.json before setting new credentials
+        if gmail_service:
+            gmail_service.credentials = None
+            gmail_service.service = None
+        token_path = 'token.json'
+        if os.path.exists(token_path):
+            try:
+                os.remove(token_path)
+                print(f"✅ Cleared token.json before OAuth callback")
+            except Exception as e:
+                print(f"⚠️ Could not remove token.json: {e}")
         print("🔍 OAuth callback received")
         print(f"🔍 Session data: {dict(session)}")
         print(f"🔍 Request args: {dict(request.args)}")

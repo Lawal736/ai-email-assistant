@@ -280,9 +280,21 @@ class GmailService:
         }
     
     def set_credentials_from_token(self, token_data):
-        """Set credentials from token data dictionary or JSON string"""
+        """Set credentials from token data dictionary or JSON string. Always clear in-memory and file-based credentials first."""
+        # Always clear in-memory credentials and service
+        self.credentials = None
+        self.service = None
+
+        # Always delete token.json before setting new credentials
+        token_path = 'token.json'
+        if os.path.exists(token_path):
+            try:
+                os.remove(token_path)
+                print(f"✅ Cleared token.json before setting new credentials")
+            except Exception as e:
+                print(f"⚠️ Could not remove token.json: {e}")
+
         if not token_data:
-            self.credentials = None
             return
 
         # If token_data is a string, parse it as JSON
@@ -292,7 +304,6 @@ class GmailService:
                 token_data = json.loads(token_data)
             except Exception as e:
                 print(f"Error parsing token JSON: {e}")
-                self.credentials = None
                 return
 
         try:
@@ -304,9 +315,23 @@ class GmailService:
                 client_secret=token_data.get('client_secret'),
                 scopes=token_data.get('scopes')
             )
+            # Save credentials to token.json for compatibility (optional)
+            with open(token_path, 'w') as token_file:
+                token_file.write(self.credentials.to_json())
+            print(f"✅ New credentials set and token.json written")
         except Exception as e:
             print(f"Error setting credentials from token: {e}")
             self.credentials = None
+            return
+
+        # Optionally: verify the Gmail email matches the intended user (if possible)
+        try:
+            service = self._get_service()
+            profile = service.users().getProfile(userId='me').execute()
+            email = profile.get('emailAddress')
+            print(f"✅ Credentials set for Gmail account: {email}")
+        except Exception as e:
+            print(f"⚠️ Could not verify Gmail account after setting credentials: {e}")
     
     def _get_service(self):
         """Get Gmail API service instance"""
