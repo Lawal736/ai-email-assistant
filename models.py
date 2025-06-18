@@ -145,6 +145,24 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_processed_emails_lookup 
             ON processed_emails(user_id, month_year, action_type)
         ''')
+
+        # Create user_vip_senders table for VIP sender management
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_vip_senders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                vip_email TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                UNIQUE(user_id, vip_email)
+            )
+        ''')
+
+        # Create index for VIP sender lookups
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_user_vip_senders_lookup 
+            ON user_vip_senders(user_id)
+        ''')
         
         # Insert default subscription plans if they don't exist
         cursor.execute('''
@@ -1265,6 +1283,52 @@ class User:
         finally:
             conn.close()
         return True
+
+    def get_vip_senders(self, user_id):
+        """Get list of VIP senders for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT vip_email, created_at 
+                FROM user_vip_senders 
+                WHERE user_id = ? 
+                ORDER BY created_at ASC
+            ''', (user_id,))
+            vip_senders = [row[0] for row in cursor.fetchall()]
+            return vip_senders
+        finally:
+            conn.close()
+
+    def add_vip_sender(self, user_id, vip_email):
+        """Add a VIP sender for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO user_vip_senders (user_id, vip_email)
+                VALUES (?, ?)
+            ''', (user_id, vip_email.lower().strip()))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False  # Already exists
+        finally:
+            conn.close()
+
+    def remove_vip_sender(self, user_id, vip_email):
+        """Remove a VIP sender for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                DELETE FROM user_vip_senders 
+                WHERE user_id = ? AND vip_email = ?
+            ''', (user_id, vip_email.lower().strip()))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
 
 class SubscriptionPlan:
     """Subscription plan model"""

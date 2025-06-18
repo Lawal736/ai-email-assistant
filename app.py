@@ -3471,6 +3471,48 @@ def toggle_ai_priority():
     session['ai_priority_toggle'] = not current
     return jsonify({'ai_priority_toggle': session['ai_priority_toggle']})
 
+@app.route('/api/vip-senders', methods=['GET'])
+@login_required
+def get_vip_senders():
+    """Get current user's VIP senders"""
+    user_id = session.get('user_id')
+    vip_senders = user_model.get_vip_senders(user_id)
+    return jsonify({'vip_senders': vip_senders})
+
+@app.route('/api/vip-senders', methods=['POST'])
+@login_required
+def add_vip_sender():
+    """Add a VIP sender for the current user"""
+    user_id = session.get('user_id')
+    data = request.get_json()
+    vip_email = data.get('vip_email', '').strip()
+    
+    if not vip_email or '@' not in vip_email:
+        return jsonify({'error': 'Invalid email address'}), 400
+    
+    success = user_model.add_vip_sender(user_id, vip_email)
+    if success:
+        return jsonify({'message': 'VIP sender added successfully'})
+    else:
+        return jsonify({'error': 'VIP sender already exists'}), 409
+
+@app.route('/api/vip-senders', methods=['DELETE'])
+@login_required
+def remove_vip_sender():
+    """Remove a VIP sender for the current user"""
+    user_id = session.get('user_id')
+    data = request.get_json()
+    vip_email = data.get('vip_email', '').strip()
+    
+    if not vip_email:
+        return jsonify({'error': 'Email address required'}), 400
+    
+    success = user_model.remove_vip_sender(user_id, vip_email)
+    if success:
+        return jsonify({'message': 'VIP sender removed successfully'})
+    else:
+        return jsonify({'error': 'VIP sender not found'}), 404
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port) 

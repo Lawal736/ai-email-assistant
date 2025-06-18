@@ -474,12 +474,37 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="vipModalLabel">Manage VIP Senders</h5>
+        <h5 class="modal-title" id="vipModalLabel">
+          <i class="fas fa-star text-warning me-2"></i>Manage VIP Senders
+        </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- VIP management UI goes here -->
-        <p>VIP sender management coming soon...</p>
+        <p class="text-muted mb-3">VIP senders will always be prioritized by AI analysis.</p>
+        
+        <!-- Add VIP Sender Form -->
+        <div class="mb-4">
+          <form id="addVipForm" class="row g-2">
+            <div class="col-8">
+              <input type="email" class="form-control" id="vipEmailInput" placeholder="Enter email address" required>
+            </div>
+            <div class="col-4">
+              <button type="submit" class="btn btn-warning w-100">
+                <i class="fas fa-plus me-1"></i>Add
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- VIP Senders List -->
+        <div id="vipSendersList">
+          <div class="text-center text-muted">
+            <i class="fas fa-spinner fa-spin"></i> Loading VIP senders...
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
@@ -1836,8 +1861,120 @@ function toggleAIPriority() {
 
 function showVipModal(event) {
     event.preventDefault();
-    var vipModal = new bootstrap.Modal(document.getElementById('vipModal'));
-    vipModal.show();
+    const modal = new bootstrap.Modal(document.getElementById('vipModal'));
+    modal.show();
+    loadVipSenders();
+}
+
+function loadVipSenders() {
+    fetch('/api/vip-senders')
+        .then(response => response.json())
+        .then(data => {
+            const listContainer = document.getElementById('vipSendersList');
+            if (data.vip_senders && data.vip_senders.length > 0) {
+                listContainer.innerHTML = data.vip_senders.map(email => `
+                    <div class="d-flex justify-content-between align-items-center p-2 border rounded mb-2">
+                        <div>
+                            <i class="fas fa-star text-warning me-2"></i>
+                            <span class="fw-medium">${email}</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeVipSender('${email}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                listContainer.innerHTML = '<p class="text-muted text-center">No VIP senders added yet.</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading VIP senders:', error);
+            document.getElementById('vipSendersList').innerHTML = 
+                '<p class="text-danger text-center">Error loading VIP senders.</p>';
+        });
+}
+
+function addVipSender(email) {
+    fetch('/api/vip-senders', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ vip_email: email })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            // Success
+            document.getElementById('vipEmailInput').value = '';
+            loadVipSenders();
+            showAlert('VIP sender added successfully!', 'success');
+        } else {
+            showAlert(data.error || 'Failed to add VIP sender', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error adding VIP sender:', error);
+        showAlert('Error adding VIP sender', 'danger');
+    });
+}
+
+function removeVipSender(email) {
+    if (confirm(`Remove ${email} from VIP senders?`)) {
+        fetch('/api/vip-senders', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ vip_email: email })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                loadVipSenders();
+                showAlert('VIP sender removed successfully!', 'success');
+            } else {
+                showAlert(data.error || 'Failed to remove VIP sender', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error removing VIP sender:', error);
+            showAlert('Error removing VIP sender', 'danger');
+        });
+    }
+}
+
+// Add event listener for the VIP form
+document.addEventListener('DOMContentLoaded', function() {
+    const addVipForm = document.getElementById('addVipForm');
+    if (addVipForm) {
+        addVipForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const email = document.getElementById('vipEmailInput').value.trim();
+            if (email) {
+                addVipSender(email);
+            }
+        });
+    }
+});
+
+function showAlert(message, type) {
+    // Create a simple alert notification
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
 }
 
 document.addEventListener('DOMContentLoaded', function () {

@@ -155,6 +155,24 @@ class DatabaseManager:
                 ON processed_emails(user_id, month_year, action_type)
             ''')
             
+            # Create user_vip_senders table for VIP sender management
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_vip_senders (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    vip_email VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    UNIQUE(user_id, vip_email)
+                )
+            ''')
+            
+            # Create index for VIP sender lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_vip_senders_lookup 
+                ON user_vip_senders(user_id)
+            ''')
+            
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)')
@@ -950,35 +968,63 @@ class User:
         conn.close()
 
     def delete_gmail_token(self, user_id):
-        """Delete user's Gmail token from both user_tokens and users tables (PostgreSQL) with debug logging"""
+        """Delete user's Gmail token from both user_tokens and users tables"""
         conn = self.db_manager.get_connection()
         cursor = conn.cursor()
         try:
-            print(f"[DEBUG] Attempting to delete Gmail token for user_id: {user_id}")
-            # Log current state
-            cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = %s', (user_id,))
-            before_token = cursor.fetchone()
-            cursor.execute('SELECT gmail_token FROM users WHERE id = %s', (user_id,))
-            before_legacy = cursor.fetchone()
-            print(f"[DEBUG] Before delete - user_tokens: {before_token}, users.gmail_token: {before_legacy}")
-
             cursor.execute('DELETE FROM user_tokens WHERE user_id = %s', (user_id,))
             cursor.execute('UPDATE users SET gmail_token = NULL WHERE id = %s', (user_id,))
             conn.commit()
-
-            # Log after state
-            cursor.execute('SELECT token_data FROM user_tokens WHERE user_id = %s', (user_id,))
-            after_token = cursor.fetchone()
-            cursor.execute('SELECT gmail_token FROM users WHERE id = %s', (user_id,))
-            after_legacy = cursor.fetchone()
-            print(f"[DEBUG] After delete - user_tokens: {after_token}, users.gmail_token: {after_legacy}")
-        except Exception as e:
-            print(f"[ERROR] Exception in delete_gmail_token: {e}")
-            conn.rollback()
-            raise
         finally:
             conn.close()
         return True
+
+    def get_vip_senders(self, user_id):
+        """Get list of VIP senders for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT vip_email, created_at 
+                FROM user_vip_senders 
+                WHERE user_id = %s 
+                ORDER BY created_at ASC
+            ''', (user_id,))
+            vip_senders = [row[0] for row in cursor.fetchall()]
+            return vip_senders
+        finally:
+            conn.close()
+
+    def add_vip_sender(self, user_id, vip_email):
+        """Add a VIP sender for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO user_vip_senders (user_id, vip_email)
+                VALUES (%s, %s)
+            ''', (user_id, vip_email.lower().strip()))
+            conn.commit()
+            return True
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            return False  # Already exists
+        finally:
+            conn.close()
+
+    def remove_vip_sender(self, user_id, vip_email):
+        """Remove a VIP sender for a user"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                DELETE FROM user_vip_senders 
+                WHERE user_id = %s AND vip_email = %s
+            ''', (user_id, vip_email.lower().strip()))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
 
 class SubscriptionPlan:
     """Subscription plan model"""
