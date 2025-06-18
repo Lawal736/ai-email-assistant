@@ -599,7 +599,7 @@
                             </ul>
                         </li>
                         
-                        {% if session.get('gmail_authenticated') %}
+                        {% if session.get('gmail_authenticated') and user and user.gmail_email %}
                             <li class="nav-item">
                                 <span class="navbar-text me-3">
                                     <i class="fas fa-check-circle text-success me-1"></i>

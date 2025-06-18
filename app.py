@@ -1783,6 +1783,11 @@ def account():
     # Always fetch the latest user data from the database
     user = user_model.get_user_by_id(user_id) if user_model else None
     
+    # Enforce Gmail token/email consistency
+    enforce_gmail_consistency(user_id, user_model)
+    # Refresh user after possible update
+    user = user_model.get_user_by_id(user_id) if user_model else None
+    
     # If user is not found, handle gracefully
     if not user:
         print(f"❌ User not found in database for user_id: {user_id}")
@@ -1803,28 +1808,29 @@ def account():
         user.setdefault('api_usage_count', 0)
         user.setdefault('subscription_plan', 'free')
         user.setdefault('subscription_status', 'inactive')
+        user.setdefault('gmail_email', None)
     
-    # Get the user's actual plan quota dynamically and update usage count
-    if plan_model:
-        user_plan_data = plan_model.get_plan_by_name(user.get('subscription_plan', 'free'))
-        if user_plan_data:
-            user['monthly_usage_limit'] = user_plan_data['email_limit']
-            print(f"🔍 Dynamic quota set: {user['subscription_plan']} = {user['monthly_usage_limit']} emails/month")
-        else:
-            # Fallback to free plan if plan not found
-            free_plan = plan_model.get_plan_by_name('free')
-            user['monthly_usage_limit'] = free_plan['email_limit'] if free_plan else 100
-            print(f"⚠️ Plan not found, using free plan quota: {user['monthly_usage_limit']}")
-        
-        # Get actual unique emails processed this month for accurate usage display
-        if user_model:
-            unique_emails_count = user_model.get_unique_emails_processed_this_month(user_id)
-            user['api_usage_count'] = unique_emails_count
-            print(f"📊 Account page: Updated usage count to {unique_emails_count} unique emails")
-    else:
-        # Final fallback if plan_model not available
-        user['monthly_usage_limit'] = 100
-        print(f"⚠️ Plan model not available, using fallback quota: {user['monthly_usage_limit']}")
+    # Get Gmail profile information if Gmail is connected and token is valid
+    gmail_profile = None
+    gmail_token = user_model.get_gmail_token(user_id) if user_model else None
+    if user and user.get('gmail_email') and gmail_token:
+        try:
+            if gmail_service:
+                gmail_service.clear_credentials()
+            gmail_service.set_credentials_from_token(gmail_token)
+            if gmail_service.is_authenticated():
+                gmail_profile = gmail_service.get_user_profile()
+            else:
+                # If token is invalid, clear both
+                user_model.delete_gmail_token(user_id)
+                user_model.set_gmail_email(user_id, None)
+                user['gmail_email'] = None
+        except Exception as e:
+            print(f"Error getting Gmail profile: {e}")
+            # On error, clear both
+            user_model.delete_gmail_token(user_id)
+            user_model.set_gmail_email(user_id, None)
+            user['gmail_email'] = None
     
     payments = payment_model.get_user_payments(user_id) if payment_model else []
     user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
@@ -1858,20 +1864,6 @@ def account():
                 user['formatted_last_login'] = user['last_login']
         else:
             user['formatted_last_login'] = 'Never'
-    
-    # Get Gmail profile information if Gmail is connected
-    gmail_profile = None
-    if user and user.get('gmail_email'):
-        gmail_token = user_model.get_gmail_token(user_id) if user_model else None
-        if gmail_token:
-            try:
-                if gmail_service:
-                    gmail_service.clear_credentials()
-                gmail_service.set_credentials_from_token(gmail_token)
-                if gmail_service.is_authenticated():
-                    gmail_profile = gmail_service.get_user_profile()
-            except Exception as e:
-                print(f"Error getting Gmail profile: {e}")
     
     # Pass the up-to-date user object to the template
     return render_template('account.html', user=user, payments=payments, gmail_profile=gmail_profile)
@@ -3393,6 +3385,19 @@ def admin_user_detail(user_id):
     if not user:
         return jsonify({'error': 'User not found'}), 404
     return jsonify({'user': user})
+
+# Utility: Enforce Gmail token/email consistency
+
+def enforce_gmail_consistency(user_id, user_model):
+    """Ensure that gmail_token and gmail_email are always in sync. If one is missing, clear both."""
+    if not user_model or not user_id:
+        return
+    gmail_token = user_model.get_gmail_token(user_id)
+    gmail_email = user_model.get_gmail_email(user_id)
+    # If only one is present, clear both
+    if (gmail_token and not gmail_email) or (gmail_email and not gmail_token):
+        user_model.delete_gmail_token(user_id)
+        user_model.set_gmail_email(user_id, None)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
