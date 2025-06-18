@@ -305,9 +305,9 @@
                                         <div class="d-flex justify-content-between align-items-start mb-2">
                                             <h6 class="mb-1">{{ thread.subject }}</h6>
                                             {% if ai_priority_toggle and thread.ai_priority %}
-                                                <span class="badge priority-{{ thread.ai_priority }}">{{ thread.ai_priority|title }} (AI)</span>
+                                                <span class="badge priority-{{ thread.ai_priority }}" data-bs-toggle="tooltip" title="AI-powered priority">{{ thread.ai_priority|title }} (AI)</span>
                                             {% else %}
-                                                <span class="badge priority-{{ thread.priority }}">{{ thread.priority|title }}</span>
+                                                <span class="badge priority-{{ thread.priority }}" data-bs-toggle="tooltip" title="Keyword-based priority">{{ thread.priority|title }}</span>
                                             {% endif %}
                                         </div>
                                         <p class="text-muted small mb-2">
@@ -360,7 +360,11 @@
                                 <tr>
                                     <th>Sender</th>
                                     <th>Subject</th>
-                                    <th>Priority</th>
+                                    <th>Priority
+                                        <span class="ms-1" data-bs-toggle="tooltip" title="AI-powered if enabled, otherwise keyword-based">
+                                            <i class="fas fa-info-circle text-muted"></i>
+                                        </span>
+                                    </th>
                                     <th>Type</th>
                                     <th>Time</th>
                                     <th>Actions</th>
@@ -380,9 +384,9 @@
                                         </td>
                                         <td>
                                             {% if ai_priority_toggle and email.ai_priority %}
-                                                <span class="badge priority-{{ email.ai_priority }}">{{ email.ai_priority|title }} (AI)</span>
+                                                <span class="badge priority-{{ email.ai_priority }}" data-bs-toggle="tooltip" title="AI-powered priority">{{ email.ai_priority|title }} (AI)</span>
                                             {% else %}
-                                                <span class="badge priority-{{ email.priority }}">{{ email.priority|title }}</span>
+                                                <span class="badge priority-{{ email.priority }}" data-bs-toggle="tooltip" title="Keyword-based priority">{{ email.priority|title }}</span>
                                             {% endif %}
                                         </td>
                                         <td>
@@ -407,9 +411,9 @@
                         </table>
                     </div>
                 {% else %}
-                    <p class="text-muted text-center py-4">
-                        <i class="fas fa-inbox fa-3x mb-3"></i><br>
-                        No emails found for today!
+                    <p class="text-muted text-center py-3">
+                        <i class="fas fa-envelope fa-2x mb-2"></i><br>
+                        No recent emails found for today!
                     </p>
                 {% endif %}
             </div>
@@ -1813,5 +1817,12 @@ function toggleAIPriority() {
         alert('Failed to toggle AI ranking.');
     });
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+        new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
 </script>
 {% endblock %} 
