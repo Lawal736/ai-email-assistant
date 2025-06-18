@@ -749,14 +749,11 @@ Format your response in clear sections with bullet points where appropriate.
             print(f"[DEBUG] use_llm for sender {processed_email.get('sender')}: {use_llm}")
             if use_llm and self.ai_service:
                 # Call LLM for priority
-                prompt = f"""
-You are an AI email assistant. Given the following email, assign a priority (urgent, high, normal, low) and explain your reasoning.
-Email:
-Subject: {processed_email.get('subject','')}
-From: {processed_email.get('sender','')}
-Body: {processed_email.get('body','')}
-Output JSON: {{"priority": "...", "reason": "..."}}
-"""
+                sender = (processed_email.get('sender') or '').lower()
+                prompt_prefix = ''
+                if sender in vip_senders:
+                    prompt_prefix = 'The following email is from a VIP sender. Always assign it a HIGH or URGENT priority unless it is clearly spam or irrelevant.\n\n'
+                prompt = f"""{prompt_prefix}You are an AI email assistant. Given the following email, assign a priority (urgent, high, normal, low) and explain your reasoning.\nEmail:\nSubject: {processed_email.get('subject','')}\nFrom: {processed_email.get('sender','')}\nBody: {processed_email.get('body','')}\nOutput JSON: {{\"priority\": \"...\", \"reason\": \"...\"}}\n"""
                 try:
                     llm_result = self.ai_service.assign_priority(prompt)
                     if llm_result and isinstance(llm_result, dict):
