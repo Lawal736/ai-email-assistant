@@ -757,9 +757,15 @@ Format your response in clear sections with bullet points where appropriate.
                 try:
                     llm_result = self.ai_service.assign_priority(prompt)
                     if llm_result and isinstance(llm_result, dict):
-                        processed_email['ai_priority'] = llm_result.get('priority', 'normal')
+                        # VIP override: if sender is VIP and priority is not high/urgent, force high
+                        priority = llm_result.get('priority', 'normal').lower()
+                        if sender in vip_senders and priority not in ['high', 'urgent']:
+                            print(f"[VIP OVERRIDE] Forcing priority to 'high' for VIP sender: {sender}")
+                            priority = 'high'
+                            llm_result['reason'] = f"VIP sender override: {llm_result.get('reason', '')}"
+                        processed_email['ai_priority'] = priority
                         processed_email['ai_priority_reason'] = llm_result.get('reason', '')
-                        processed_email['priority'] = llm_result.get('priority', 'normal')
+                        processed_email['priority'] = priority
                     else:
                         processed_email['priority'] = self._keyword_priority(processed_email)
                 except Exception as e:
