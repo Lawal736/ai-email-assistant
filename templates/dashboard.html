@@ -372,9 +372,7 @@
                                 {% for email in emails %}
                                     <tr class="email-card">
                                         <td>
-                                            <strong>{{ email.sender_clean or email.sender }}</strong>
-                                            <br>
-                                            <small class="text-muted">{{ email.sender_domain }}</small>
+                                            {{ email.sender_clean or email.sender.split('<')[0].strip() or email.sender }}
                                         </td>
                                         <td>
                                             <div class="fw-medium">{{ email.subject }}</div>
@@ -382,15 +380,13 @@
                                         </td>
                                         <td>
                                             {% if ai_priority_toggle %}
-                                                {% if email.ai_priority %}
-                                                    <span class="badge priority-{{ email.ai_priority }}">{{ email.ai_priority|title }} (AI)</span>
-                                                {% endif %}
+                                                <span class="badge priority-{{ email.ai_priority or 'normal' }}">{{ email.ai_priority|title if email.ai_priority else 'Normal' }}{% if email.ai_priority %} (AI){% endif %}</span>
                                             {% else %}
-                                                <span class="badge priority-{{ email.priority }}">{{ email.priority|title }}</span>
+                                                <span class="badge priority-{{ email.priority or 'normal' }}">{{ email.priority|title if email.priority else 'Normal' }}</span>
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <span class="badge bg-secondary">{{ email.category|title }}</span>
+                                            <span class="badge bg-secondary">{{ email.category|title if email.category else 'Other' }}</span>
                                         </td>
                                         <td>
                                             <small>{{ email.date.split('T')[1][:5] if 'T' in email.date else email.date }}</small>
