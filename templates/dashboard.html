@@ -38,11 +38,24 @@
                         </div>
                     </div>
                 </div>
-                <!-- AI Priority Toggle Button -->
-                <button id="toggleAIPriorityBtn" class="btn btn-outline-secondary btn-sm mt-3" onclick="toggleAIPriority()">
-                    <i class="fas fa-brain me-1"></i>
-                    {% if ai_priority_toggle %}AI Ranking: ON{% else %}AI Ranking: OFF{% endif %}
-                </button>
+                <!-- AI Prioritization UI -->
+                <div class="mt-3 d-flex flex-column align-items-end" style="gap: 0.25rem;">
+                    <div class="d-flex align-items-center" style="gap: 0.5rem;">
+                        <i class="fas fa-brain fa-lg text-secondary"></i>
+                        <label class="form-check-label fw-bold mb-0" for="toggleAIPriorityBtn" style="cursor:pointer;">
+                            AI-Powered Prioritization (Beta)
+                        </label>
+                        <input type="checkbox" id="toggleAIPriorityBtn" class="form-check-input ms-2" style="cursor:pointer;" {% if ai_priority_toggle %}checked{% endif %} onclick="toggleAIPriority()">
+                    </div>
+                    <div>
+                        <a href="#" class="text-warning fw-bold" style="font-size: 0.95em;">
+                            <i class="fas fa-star me-1"></i>Manage VIP Senders
+                        </a>
+                    </div>
+                    <div class="text-muted" style="font-size: 0.95em;">
+                        Smarter, more personalized email triage
+                    </div>
+                </div>
             </div>
         </div>
     </div>
