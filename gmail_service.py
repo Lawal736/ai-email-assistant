@@ -352,11 +352,11 @@ class GmailService:
             if user_plan == 'free':
                 # Free users: max 10 emails per load
                 effective_max_results = min(max_results, 10)
-                print(f"🔍 Free user limit applied: {effective_max_results} emails max")
+                print(f"🔍 Free user: fetching up to {effective_max_results} emails in this request (not monthly quota)")
             else:
                 # Pro/Enterprise users: use requested limit
                 effective_max_results = max_results
-                print(f"🔍 {user_plan.capitalize()} user: {effective_max_results} emails max")
+                print(f"🔍 {user_plan.capitalize()} user: fetching up to {effective_max_results} emails in this request (not monthly quota)")
             
             # Calculate date range for today
             today = datetime.now().date()
