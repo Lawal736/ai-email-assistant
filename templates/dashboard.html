@@ -4,6 +4,116 @@
 {% block title %}Dashboard - AI Email Assistant{% endblock %}
 
 {% block content %}
+<!-- TEST_MARKER_AI_VIP_2025 -->
+<div class="row mb-3 align-items-center">
+    <div class="col-md-8"></div>
+    <div class="col-md-4 text-end">
+      <label class="form-check-label me-3" for="aiPriorityToggle">
+        <input type="checkbox" class="form-check-input" id="aiPriorityToggle" style="margin-right:8px;">
+        <strong>Try AI-Powered Prioritization (Beta)</strong>
+      </label>
+      <button class="btn btn-sm btn-outline-warning ms-2" id="manageVipBtn" style="font-weight:600;">
+        <i class="fas fa-star me-1"></i> Manage VIP Senders
+      </button>
+      <span class="text-muted ms-2" style="font-size:0.95em;">Smarter, more personalized email triage</span>
+    </div>
+  </div>
+  <!-- VIP Modal -->
+  <div class="modal fade" id="vipModal" tabindex="-1" aria-labelledby="vipModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="vipModalLabel"><i class="fas fa-star text-warning me-2"></i>Manage VIP Senders</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="vipForm">
+            <div class="mb-3">
+              <label for="vipInput" class="form-label">Add VIP Email Address</label>
+              <input type="email" class="form-control" id="vipInput" placeholder="e.g. ceo@company.com">
+              <div class="form-text">VIP senders are always prioritized by AI.</div>
+            </div>
+            <button type="submit" class="btn btn-warning mb-3" style="color:#222;font-weight:600;">Add VIP</button>
+          </form>
+          <div id="vipList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const toggle = document.getElementById('aiPriorityToggle');
+      if (toggle) {
+        const aiPref = localStorage.getItem('aiPriorityToggle') === 'true';
+        toggle.checked = aiPref;
+        toggle.addEventListener('change', function() {
+          localStorage.setItem('aiPriorityToggle', toggle.checked);
+          const url = new URL(window.location.href);
+          url.searchParams.set('ai_priority', toggle.checked ? '1' : '0');
+          window.location.href = url.toString();
+        });
+      }
+      // VIP sender management
+      const vipBtn = document.getElementById('manageVipBtn');
+      const vipModal = new bootstrap.Modal(document.getElementById('vipModal'));
+      const vipForm = document.getElementById('vipForm');
+      const vipInput = document.getElementById('vipInput');
+      const vipListDiv = document.getElementById('vipList');
+      function getVipSenders() {
+        return JSON.parse(localStorage.getItem('vipSenders') || '[]');
+      }
+      function setVipSenders(list) {
+        localStorage.setItem('vipSenders', JSON.stringify(list));
+      }
+      function renderVipList() {
+        const vips = getVipSenders();
+        if (vips.length === 0) {
+          vipListDiv.innerHTML = '<div class=\"alert alert-info\">No VIP senders yet.</div>';
+          return;
+        }
+        vipListDiv.innerHTML = vips.map((vip, i) =>
+          `<div class=\"d-flex align-items-center mb-2\">
+            <span class=\"badge bg-warning text-dark me-2\" style=\"font-size:1em;font-weight:600;\"><i class=\"fas fa-star me-1\"></i>${vip}</span>
+            <button class=\"btn btn-sm btn-outline-danger ms-2\" onclick=\"removeVip(${i})\" title=\"Remove VIP\"><i class=\"fas fa-times\"></i></button>
+          </div>`
+        ).join('');
+      }
+      window.removeVip = function(idx) {
+        const vips = getVipSenders();
+        vips.splice(idx, 1);
+        setVipSenders(vips);
+        renderVipList();
+      };
+      if (vipBtn) {
+        vipBtn.addEventListener('click', function() {
+          renderVipList();
+          vipModal.show();
+        });
+      }
+      if (vipForm) {
+        vipForm.addEventListener('submit', function(e) {
+          e.preventDefault();
+          const email = vipInput.value.trim();
+          if (email && !getVipSenders().includes(email)) {
+            setVipSenders([...getVipSenders(), email]);
+            renderVipList();
+            vipInput.value = '';
+          }
+        });
+      }
+      // Mark VIP senders in the email list
+      setTimeout(function() {
+        const vips = getVipSenders();
+        document.querySelectorAll('.email-vip-badge').forEach(function(badge) {
+          const sender = badge.getAttribute('data-sender');
+          if (vips.includes(sender)) {
+            badge.style.display = 'inline-block';
+            badge.innerHTML = '<span class=\"badge bg-warning text-dark\" style=\"font-size:0.95em;font-weight:600;\" title=\"VIP Sender\"><i class=\"fas fa-star me-1\"></i>VIP</span>';
+          }
+        });
+      }, 300);
+    });
+  </script>
 <div class="row">
     <!-- Dashboard Header -->
     <div class="dashboard-header">
