@@ -1831,6 +1831,14 @@ def account():
         user.setdefault('subscription_status', 'inactive')
         user.setdefault('gmail_email', None)
     
+    # Always set monthly_usage_limit from the current plan (not DB value)
+    plan_limit = 100  # Default fallback
+    if plan_model and user and user.get('subscription_plan'):
+        plan = plan_model.get_plan_by_name(user['subscription_plan'])
+        if plan and 'email_limit' in plan:
+            plan_limit = plan['email_limit']
+    user['monthly_usage_limit'] = plan_limit
+    
     # Get Gmail profile information if Gmail is connected and token is valid
     gmail_profile = None
     gmail_token = user_model.get_gmail_token(user_id) if user_model else None
@@ -1852,10 +1860,6 @@ def account():
             user_model.delete_gmail_token(user_id)
             user_model.set_gmail_email(user_id, None)
             user['gmail_email'] = None
-    
-    payments = payment_model.get_user_payments(user_id) if payment_model else []
-    user_currency = currency_service.get_user_currency(user_id) if user_id else 'USD'
-    currency_symbol = currency_service.get_currency_symbol(user_currency)
     
     # Format payment amounts in local currency for account overview
     for payment in payments:
