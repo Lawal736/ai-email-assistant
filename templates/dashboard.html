@@ -1164,7 +1164,9 @@ function viewThread(threadKey) {
         </div>
     `;
     
-    console.log("✅ About to show modal");
+    // Set currentEmailId to the first email in the thread for response generation
+    currentEmailId = thread.emails[0]?.id || null;
+    console.log('[DEBUG] viewThread set currentEmailId:', currentEmailId);
     // Show the modal
     new bootstrap.Modal(modalElement).show();
     console.log("✅ Modal show called");
