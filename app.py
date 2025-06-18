@@ -625,9 +625,15 @@ def dashboard():
         filtered_emails = email_processor.filter_emails(emails) if email_processor else emails
         print(f"📧 After filtering: {len(filtered_emails)} emails")
         
-        # Process emails with basic information
-        print("⚙️ Processing emails...")
-        processed_emails = email_processor.process_emails_basic(filtered_emails) if email_processor else filtered_emails
+        # Use AI prioritization for Pro/Enterprise, basic for Free
+        ai_priority_toggle = session.get('ai_priority_toggle', True)  # Default ON
+        user['vip_senders'] = user_model.get_vip_senders(user_id)
+        if plan in ['pro', 'enterprise']:
+            print("⚙️ Processing emails with AI hybrid prioritization...")
+            processed_emails = email_processor.process_emails_hybrid(filtered_emails, user, ai_priority_toggle) if email_processor else filtered_emails
+        else:
+            print("⚙️ Processing emails with basic prioritization...")
+            processed_emails = email_processor.process_emails_basic(filtered_emails) if email_processor else filtered_emails
         print(f"✅ Processed {len(processed_emails)} emails")
         
         # Group emails by sender and subject for thread analysis
@@ -653,7 +659,6 @@ def dashboard():
         # Get current date
         current_date = datetime.now().strftime('%B %d, %Y')
         
-        ai_priority_toggle = session.get('ai_priority_toggle', True)  # Default ON
         return render_template('dashboard.html', 
                              emails=processed_emails, 
                              email_threads=email_threads,
