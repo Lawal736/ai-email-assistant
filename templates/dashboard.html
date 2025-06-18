@@ -1624,9 +1624,13 @@ function generateResponse(emailId) {
 }
 
 function generateResponseFromModal() {
+    console.log('[DEBUG] generateResponseFromModal called. currentEmailId:', currentEmailId);
     if (currentEmailId) {
         generateResponse(currentEmailId);
         bootstrap.Modal.getInstance(document.getElementById('emailModal')).hide();
+    } else {
+        alert('Error: No email selected for response generation. Please try again.');
+        console.error('❌ [ERROR] currentEmailId is not set when trying to generate response from modal.');
     }
 }
 
