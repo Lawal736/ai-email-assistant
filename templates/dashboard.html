@@ -369,7 +369,7 @@
                                         </td>
                                         <td>
                                             <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-primary" onclick="viewEmail('{{ email.id }}')">
+                                                <button class="btn btn-outline-primary" onclick="openEmailModal('{{ email.id }}')">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                                 <button class="btn btn-outline-success" onclick="generateResponse('{{ email.id }}')">
@@ -1519,36 +1519,10 @@ function analyzeThread(threadKey) {
     });
 }
 
-function viewEmail(emailId) {
-    // Find email data
-    const email = emails.find(e => e.id === emailId);
-    
-    if (email) {
-        const modalBody = document.getElementById('emailModalBody');
-        const formattedContent = formatEmailContent(email.body_clean || email.body);
-        
-        modalBody.innerHTML = `
-            <div class="mb-3">
-                <strong>From:</strong> ${email.sender}<br>
-                <strong>Subject:</strong> ${email.subject}<br>
-                <strong>Date:</strong> ${email.date}<br>
-                <strong>Priority:</strong> <span class="badge priority-${email.priority}">${email.priority}</span><br>
-                <strong>Category:</strong> <span class="badge bg-secondary">${email.category}</span>
-            </div>
-            <div class="border-top pt-3">
-                <h6>Email Content:</h6>
-                <div class="bg-light p-3 rounded">
-                    <div class="email-content">
-                        ${formattedContent}
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        currentEmailId = emailId;
-        console.log('[DEBUG] viewEmail set currentEmailId:', currentEmailId);
-        new bootstrap.Modal(document.getElementById('emailModal')).show();
-    }
+function openEmailModal(emailId) {
+    currentEmailId = emailId;
+    console.log('[DEBUG] openEmailModal set currentEmailId:', currentEmailId);
+    new bootstrap.Modal(document.getElementById('emailModal')).show();
 }
 
 function generateResponse(emailId) {
