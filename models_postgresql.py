@@ -1733,4 +1733,255 @@ class User:
                     return logs
         except Exception as e:
             print(f"❌ Error getting paginated logs: {e}")
+            return []
+
+
+class SubscriptionPlan:
+    """Subscription plan model for PostgreSQL"""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+    
+    def get_all_plans(self):
+        """Get all active subscription plans"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        SELECT id, name, price_monthly, price_yearly, email_limit, features,
+                               stripe_price_id_monthly, stripe_price_id_yearly
+                        FROM subscription_plans WHERE is_active = TRUE
+                        ORDER BY price_monthly ASC
+                    ''')
+                    
+                    plans = []
+                    for row in cur.fetchall():
+                        plans.append({
+                            'id': row[0],
+                            'name': row[1],
+                            'price_monthly': float(row[2]),
+                            'price_yearly': float(row[3]),
+                            'email_limit': row[4],
+                            'features': row[5].split(', ') if row[5] else [],
+                            'stripe_price_id_monthly': row[6],
+                            'stripe_price_id_yearly': row[7]
+                        })
+                    
+                    return plans
+        except Exception as e:
+            print(f"❌ Error getting subscription plans: {e}")
+            return []
+    
+    def get_plan_by_name(self, plan_name):
+        """Get subscription plan by name"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        SELECT id, name, price_monthly, price_yearly, email_limit, features,
+                               stripe_price_id_monthly, stripe_price_id_yearly
+                        FROM subscription_plans WHERE name = %s AND is_active = TRUE
+                    ''', (plan_name,))
+                    
+                    row = cur.fetchone()
+                    
+                    if row:
+                        return {
+                            'id': row[0],
+                            'name': row[1],
+                            'price_monthly': float(row[2]),
+                            'price_yearly': float(row[3]),
+                            'email_limit': row[4],
+                            'features': row[5].split(', ') if row[5] else [],
+                            'stripe_price_id_monthly': row[6],
+                            'stripe_price_id_yearly': row[7]
+                        }
+                    return None
+        except Exception as e:
+            print(f"❌ Error getting plan by name: {e}")
+            return None
+    
+    def create_plan(self, name, price_monthly, price_yearly, email_limit, features=None, 
+                   stripe_price_id_monthly=None, stripe_price_id_yearly=None):
+        """Create a new subscription plan"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    features_str = ', '.join(features) if features else ''
+                    
+                    cur.execute('''
+                        INSERT INTO subscription_plans 
+                        (name, price_monthly, price_yearly, email_limit, features, 
+                         stripe_price_id_monthly, stripe_price_id_yearly)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (name) DO NOTHING
+                        RETURNING id
+                    ''', (name, price_monthly, price_yearly, email_limit, features_str, 
+                          stripe_price_id_monthly, stripe_price_id_yearly))
+                    
+                    result = cur.fetchone()
+                    conn.commit()
+                    
+                    return result[0] if result else None
+        except Exception as e:
+            print(f"❌ Error creating subscription plan: {e}")
+            return None
+
+
+class PaymentRecord:
+    """Payment record model for PostgreSQL"""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+    
+    def create_payment_record(self, user_id, stripe_payment_intent_id, amount, 
+                            plan_name, billing_period, status='pending', currency='usd', payment_method='card'):
+        """Create a new payment record"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        INSERT INTO payment_records 
+                        (user_id, stripe_payment_intent_id, amount, currency, plan_name, billing_period, status, payment_method)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+                    ''', (user_id, stripe_payment_intent_id, amount, currency, plan_name, billing_period, status, payment_method))
+                    
+                    payment_id = cur.fetchone()[0]
+                    conn.commit()
+                    return payment_id
+        except Exception as e:
+            print(f"❌ Error creating payment record: {e}")
+            return None
+    
+    def update_payment_status(self, stripe_payment_intent_id, status):
+        """Update payment status"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        UPDATE payment_records 
+                        SET status = %s 
+                        WHERE stripe_payment_intent_id = %s
+                    ''', (status, stripe_payment_intent_id))
+                    
+                    conn.commit()
+                    return cur.rowcount > 0
+        except Exception as e:
+            print(f"❌ Error updating payment status: {e}")
+            return False
+    
+    def get_user_payments(self, user_id):
+        """Get all payments for a user"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        SELECT id, stripe_payment_intent_id, amount, currency, status, 
+                               plan_name, billing_period, payment_method, created_at
+                        FROM payment_records 
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                    ''', (user_id,))
+                    
+                    payments = []
+                    for row in cur.fetchall():
+                        payments.append({
+                            'id': row[0],
+                            'stripe_payment_intent_id': row[1],
+                            'amount': float(row[2]),
+                            'currency': row[3],
+                            'status': row[4],
+                            'plan_name': row[5],
+                            'billing_period': row[6],
+                            'payment_method': row[7],
+                            'created_at': row[8]
+                        })
+                    
+                    return payments
+        except Exception as e:
+            print(f"❌ Error getting user payments: {e}")
+            return []
+    
+    def get_payments_by_user(self, user_id):
+        """Get all payments for a user (alias for compatibility)"""
+        return self.get_user_payments(user_id)
+    
+    def get_payment_by_reference(self, reference):
+        """Get payment by reference (payment ID)"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        SELECT id, user_id, stripe_payment_intent_id, amount, currency, status, 
+                               plan_name, billing_period, payment_method, created_at
+                        FROM payment_records 
+                        WHERE stripe_payment_intent_id = %s
+                    ''', (reference,))
+                    
+                    row = cur.fetchone()
+                    
+                    if row:
+                        return {
+                            'id': row[0],
+                            'user_id': row[1],
+                            'stripe_payment_intent_id': row[2],
+                            'amount': float(row[3]),
+                            'currency': row[4],
+                            'status': row[5],
+                            'plan_name': row[6],
+                            'billing_period': row[7],
+                            'payment_method': row[8],
+                            'created_at': row[9]
+                        }
+                    return None
+        except Exception as e:
+            print(f"❌ Error getting payment by reference: {e}")
+            return None
+    
+    def get_database_stats(self):
+        """Get database statistics"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get table sizes
+                    cur.execute('''
+                        SELECT 
+                            pg_size_pretty(pg_database_size(current_database())) as total_size,
+                            pg_size_pretty(pg_total_relation_size('users')) as users_size,
+                            pg_size_pretty(pg_total_relation_size('processed_emails')) as emails_size,
+                            pg_size_pretty(pg_total_relation_size('payment_records')) as payments_size
+                    ''')
+                    stats = dict(cur.fetchone())
+                    
+                    # Get record counts
+                    cur.execute('''
+                        SELECT 
+                            (SELECT COUNT(*) FROM users) as total_users,
+                            (SELECT COUNT(*) FROM users WHERE subscription_status = 'active' AND subscription_plan != 'free') as active_subscriptions,
+                            (SELECT COUNT(*) FROM processed_emails WHERE DATE(processed_at) = CURRENT_DATE) as emails_today,
+                            (SELECT COUNT(*) FROM payment_records WHERE DATE(created_at) = CURRENT_DATE) as payments_today
+                    ''')
+                    counts = dict(cur.fetchone())
+                    
+                    return {**stats, **counts}
+        except Exception as e:
+            print(f"❌ Error getting database stats: {e}")
+            return {}
+    
+    def get_table_stats(self):
+        """Get statistics for each table"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 
+                            relname as table_name,
+                            n_live_tup as row_count,
+                            pg_size_pretty(pg_total_relation_size(quote_ident(relname))) as size
+                        FROM pg_stat_user_tables
+                        ORDER BY n_live_tup DESC
+                    """)
+                    return cur.fetchall()
+        except Exception as e:
+            print(f"❌ Error getting table stats: {e}")
             return [] 
