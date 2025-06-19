@@ -7,10 +7,11 @@ from email.utils import parsedate_to_datetime
 class EmailProcessor:
     """Class for processing and organizing email data"""
     
-    def __init__(self, ai_service=None, document_processor=None, gmail_service=None):
+    def __init__(self, ai_service=None, document_processor=None, gmail_service=None, user_model=None):
         self.ai_service = ai_service
         self.document_processor = document_processor
         self.gmail_service = gmail_service
+        self.user_model = user_model
         
         self.priority_keywords = {
             'high': ['urgent', 'asap', 'emergency', 'critical', 'deadline', 'important'],
@@ -778,10 +779,9 @@ Format your response in clear sections with bullet points where appropriate.
             
             # Check cache first
             cached_analysis = None
-            if user_id and processed_email.get('id'):
+            if user_id and processed_email.get('id') and self.user_model:
                 try:
-                    from models import user_model
-                    cached_analysis = user_model.get_email_analysis(user_id, processed_email['id'])
+                    cached_analysis = self.user_model.get_email_analysis(user_id, processed_email['id'])
                     if cached_analysis:
                         print(f"[CACHE HIT] Using cached analysis for email {processed_email['id']}")
                         processed_email['ai_priority'] = cached_analysis['ai_priority']
@@ -816,9 +816,9 @@ Format your response in clear sections with bullet points where appropriate.
                             processed_email['priority'] = priority
                             
                             # Save to cache
-                            if user_id and processed_email.get('id'):
+                            if user_id and processed_email.get('id') and self.user_model:
                                 try:
-                                    user_model.save_email_analysis(
+                                    self.user_model.save_email_analysis(
                                         user_id, 
                                         processed_email['id'], 
                                         priority, 

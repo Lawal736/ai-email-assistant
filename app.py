@@ -154,7 +154,7 @@ except Exception as e:
     document_processor = None
 
 try:
-    email_processor = EmailProcessor(ai_service, document_processor, gmail_service)
+    email_processor = EmailProcessor(ai_service, document_processor, gmail_service, user_model)
     print("✅ Email processor initialized")
 except Exception as e:
     print(f"⚠️ Email processor initialization failed: {e}")
