@@ -3635,13 +3635,13 @@ def analyze_emails():
 def admin_dashboard():
     """Admin dashboard"""
     try:
-        # Get database stats
-        total_users = db_manager.get_total_users()
-        active_subscriptions = db_manager.get_active_subscriptions_count()
-        recent_activity = db_manager.get_recent_activity(limit=10)
+        # Get database stats using user_model instead of db_manager
+        total_users = user_model.get_total_users()
+        active_subscriptions = user_model.get_active_subscriptions_count()
+        recent_activity = user_model.get_recent_activity(limit=10)
         
-        # Get table stats
-        table_stats = db_manager.get_table_stats()
+        # Get table stats from user_model
+        table_stats = user_model.get_table_stats()
         
         return render_template(
             'admin/dashboard.html',
@@ -3653,7 +3653,9 @@ def admin_dashboard():
     except Exception as e:
         print(f"❌ Error loading admin dashboard: {e}")
         flash('Error loading admin dashboard', 'error')
-        return redirect(url_for('dashboard'))
+        return render_template('error.html',
+                             error_title='Admin Dashboard Error',
+                             error_message=f'Error loading admin dashboard: {str(e)}'), 500
 
 @app.route('/admin/refresh-stats')
 @admin_required
