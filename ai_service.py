@@ -169,7 +169,7 @@ class HybridAIService:
                 "https://api.anthropic.com/v1/messages",
                 headers=headers,
                 json=payload,
-                timeout=30
+                timeout=60  # Increased timeout to 60 seconds
             )
             response.raise_for_status()
             return response.json()
@@ -209,7 +209,7 @@ class HybridAIService:
 
     def _call_deepseek_api(self, model: str, messages: List[Dict], max_tokens: int = 2000) -> Dict:
         """
-        Make API call to DeepSeek models.
+        Make API call to DeepSeek models with increased timeout and retry logic.
         """
         if not self.deepseek_api_key:
             raise ValueError("DEEPSEEK_API_KEY not found in environment variables")
@@ -226,21 +226,36 @@ class HybridAIService:
             "temperature": 0.7
         }
         
-        try:
-            response = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"DeepSeek API error: {str(e)}")
+        # Retry logic for better reliability
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(
+                    "https://api.deepseek.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60  # Increased timeout to 60 seconds
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.Timeout as e:
+                if attempt < max_retries:
+                    print(f"⚠️ DeepSeek API timeout (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                    continue
+                else:
+                    raise Exception(f"DeepSeek API timeout after {max_retries + 1} attempts: {str(e)}")
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries and "timeout" in str(e).lower():
+                    print(f"⚠️ DeepSeek API error (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                    continue
+                else:
+                    raise Exception(f"DeepSeek API error: {str(e)}")
+        
+        raise Exception("DeepSeek API failed after all retry attempts")
 
     def _call_gemini_api(self, model: str, messages: List[Dict], max_tokens: int = 2048) -> Dict:
         """
-        Make API call to Google Gemini models.
+        Make API call to Google Gemini models with increased timeout and retry logic.
         """
         if not self.gemini_api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
@@ -265,17 +280,32 @@ class HybridAIService:
             }
         }
         
-        try:
-            response = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}",
-                headers={"Content-Type": "application/json"},
-                json=payload,
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Gemini API error: {str(e)}")
+        # Retry logic for better reliability
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}",
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                    timeout=60  # Increased timeout to 60 seconds
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.Timeout as e:
+                if attempt < max_retries:
+                    print(f"⚠️ Gemini API timeout (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                    continue
+                else:
+                    raise Exception(f"Gemini API timeout after {max_retries + 1} attempts: {str(e)}")
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries and "timeout" in str(e).lower():
+                    print(f"⚠️ Gemini API error (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                    continue
+                else:
+                    raise Exception(f"Gemini API error: {str(e)}")
+        
+        raise Exception("Gemini API failed after all retry attempts")
     
     def _extract_response_content(self, response: Dict, provider: str) -> str:
         """
