@@ -295,6 +295,42 @@ class DatabaseManager:
         
         raise sqlite3.OperationalError("Database connection failed after all retries")
 
+    def get_table_stats(self):
+        """Get database table statistics"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Get list of tables - works for both SQLite and PostgreSQL
+            if isinstance(self, DatabaseManager):  # SQLite
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            else:  # PostgreSQL
+                cursor.execute("""
+                    SELECT tablename 
+                    FROM pg_catalog.pg_tables 
+                    WHERE schemaname != 'pg_catalog' 
+                    AND schemaname != 'information_schema'
+                """)
+            
+            tables = cursor.fetchall()
+            
+            stats = {}
+            for table in tables:
+                table_name = table[0]
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                row_count = cursor.fetchone()[0]
+                stats[table_name] = {
+                    'row_count': row_count
+                }
+            
+            return stats
+        except Exception as e:
+            print(f"❌ Error getting table stats: {e}")
+            return {}
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
 class User:
     """User model for authentication and subscription management"""
     
@@ -1304,8 +1340,18 @@ class User:
         return count
 
     def get_total_users(self):
-        """Get total number of users in the database (alias for count_users)"""
-        return self.count_users()
+        """Get total number of users"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM users")
+            return cursor.fetchone()[0]
+        except Exception as e:
+            print(f"❌ Error getting total users: {e}")
+            return 0
+        finally:
+            if 'conn' in locals():
+                conn.close()
 
     def get_users_paginated(self, offset=0, limit=20):
         """Return paginated list of users"""
@@ -1544,12 +1590,9 @@ class User:
             cursor.execute("""
                 SELECT COUNT(*) 
                 FROM users 
-                WHERE subscription_status = 'active' 
-                AND subscription_plan != 'free'
-                AND is_active = 1
+                WHERE subscription_status = 'active'
             """)
-            count = cursor.fetchone()[0]
-            return count
+            return cursor.fetchone()[0]
         except Exception as e:
             print(f"❌ Error getting active subscriptions count: {e}")
             return 0
@@ -1596,7 +1639,7 @@ class User:
             for row in cursor.fetchall():
                 activities.append({
                     'timestamp': row[0],
-                    'user': row[1] or 'Unknown',
+                    'user_email': row[1] or 'Unknown',
                     'action': row[2],
                     'details': row[3]
                 })
@@ -1611,11 +1654,11 @@ class User:
     def get_table_stats(self):
         """Get database table statistics"""
         try:
-            conn = self.db_manager.get_connection()
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             # Get list of tables - works for both SQLite and PostgreSQL
-            if isinstance(self.db_manager, DatabaseManager):  # SQLite
+            if isinstance(self, DatabaseManager):  # SQLite
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             else:  # PostgreSQL
                 cursor.execute("""
@@ -1647,7 +1690,7 @@ class User:
     def get_database_stats(self):
         """Get overall database statistics"""
         try:
-            conn = self.db_manager.get_connection()
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             # Get database size

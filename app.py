@@ -3647,12 +3647,12 @@ def admin_dashboard():
     """Admin dashboard"""
     try:
         # Get database stats using user_model
-        total_users = user_model.count_users() if user_model else 0
+        total_users = user_model.get_total_users() if user_model else 0
         active_subscriptions = user_model.get_active_subscriptions_count() if user_model else 0
         recent_activity = user_model.get_recent_activity(limit=10) if user_model else []
         
-        # Get table stats from database manager instead of user_model
-        table_stats = user_model.db_manager.get_table_stats() if user_model else {}
+        # Get table stats from database manager
+        table_stats = user_model.db_manager.get_table_stats() if user_model and user_model.db_manager else {}
         
         return render_template(
             'admin/dashboard.html',
@@ -3666,7 +3666,7 @@ def admin_dashboard():
         flash('Error loading admin dashboard', 'error')
         return render_template('error.html',
                              error_title='Admin Dashboard Error',
-                             error_message=f'Error loading admin dashboard: {str(e)}'), 500
+                             error_message=str(e)), 500
 
 @app.route('/admin/refresh-stats')
 @admin_required
