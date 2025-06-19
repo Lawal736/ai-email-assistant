@@ -301,16 +301,8 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Get list of tables - works for both SQLite and PostgreSQL
-            if isinstance(self, DatabaseManager):  # SQLite
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            else:  # PostgreSQL
-                cursor.execute("""
-                    SELECT tablename 
-                    FROM pg_catalog.pg_tables 
-                    WHERE schemaname != 'pg_catalog' 
-                    AND schemaname != 'information_schema'
-                """)
+            # Get list of tables
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             
             tables = cursor.fetchall()
             
@@ -1345,7 +1337,8 @@ class User:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM users")
-            return cursor.fetchone()[0]
+            count = cursor.fetchone()[0]
+            return count
         except Exception as e:
             print(f"❌ Error getting total users: {e}")
             return 0
@@ -1583,16 +1576,17 @@ class User:
             conn.close()
 
     def get_active_subscriptions_count(self):
-        """Get count of active subscriptions"""
+        """Get count of active paid subscriptions"""
         try:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT COUNT(*) 
-                FROM users 
-                WHERE subscription_status = 'active'
-            """)
-            return cursor.fetchone()[0]
+            cursor.execute('''
+                SELECT COUNT(*) FROM users 
+                WHERE subscription_status = 'active' 
+                AND subscription_plan != 'free'
+            ''')
+            count = cursor.fetchone()[0]
+            return count
         except Exception as e:
             print(f"❌ Error getting active subscriptions count: {e}")
             return 0
@@ -1622,28 +1616,14 @@ class User:
         try:
             conn = self.db_manager.get_connection()
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT 
-                    a.timestamp,
-                    u.email as user_email,
-                    a.action,
-                    a.details
-                FROM activity_log a
-                LEFT JOIN users u ON a.user_id = u.id
-                WHERE u.is_active = 1
-                ORDER BY a.timestamp DESC
+            cursor.execute('''
+                SELECT u.email, al.action, al.details, al.timestamp
+                FROM activity_log al
+                JOIN users u ON u.id = al.user_id
+                ORDER BY al.timestamp DESC
                 LIMIT ?
-            """, (limit,))
-            
-            activities = []
-            for row in cursor.fetchall():
-                activities.append({
-                    'timestamp': row[0],
-                    'user_email': row[1] or 'Unknown',
-                    'action': row[2],
-                    'details': row[3]
-                })
-            return activities
+            ''', (limit,))
+            return cursor.fetchall()
         except Exception as e:
             print(f"❌ Error getting recent activity: {e}")
             return []
@@ -1657,16 +1637,8 @@ class User:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Get list of tables - works for both SQLite and PostgreSQL
-            if isinstance(self, DatabaseManager):  # SQLite
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            else:  # PostgreSQL
-                cursor.execute("""
-                    SELECT tablename 
-                    FROM pg_catalog.pg_tables 
-                    WHERE schemaname != 'pg_catalog' 
-                    AND schemaname != 'information_schema'
-                """)
+            # Get list of tables
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             
             tables = cursor.fetchall()
             
