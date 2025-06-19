@@ -3441,23 +3441,31 @@ def admin_user_count():
 
 @app.route('/admin/users')
 @admin_required
-def admin_users_view():
-    """User management interface"""
+def admin_users_list():
+    """Admin users list page with pagination and search"""
     try:
-        page = request.args.get('page', 1, type=int)
-        search = request.args.get('search', '')
+        page = int(request.args.get('page', 1))
+        search = request.args.get('search', '').strip()
+        per_page = 10  # Users per page
         
-        users = user_model.get_users_paginated(page=page, 
-                                             search=search,
-                                             per_page=50)
+        result = user_model.get_users_paginated(
+            page=page,
+            per_page=per_page,
+            search_query=search
+        )
         
-        return render_template('admin/users.html',
-                             users=users,
-                             search=search,
-                             page=page)
+        return render_template(
+            'admin/users.html',
+            users=result['users'],
+            total=result['total'],
+            pages=result['pages'],
+            current_page=result['current_page'],
+            search_query=search
+        )
+        
     except Exception as e:
         print(f"❌ Error loading users list: {e}")
-        flash('Error loading users list', 'error')
+        flash('Failed to load users list', 'error')
         return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/search-users')

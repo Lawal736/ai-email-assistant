@@ -1446,30 +1446,69 @@ class User:
             if 'conn' in locals():
                 conn.close()
 
-    def get_users_paginated(self, offset=0, limit=20):
-        """Return paginated list of users"""
-        conn = self.db_manager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, email, first_name, last_name, subscription_plan, subscription_status, created_at, last_login
-            FROM users WHERE is_active = 1
-            ORDER BY id ASC
-            LIMIT ? OFFSET ?
-        ''', (limit, offset))
-        users = []
-        for row in cursor.fetchall():
-            users.append({
-                'id': row[0],
-                'email': row[1],
-                'first_name': row[2],
-                'last_name': row[3],
-                'subscription_plan': row[4],
-                'subscription_status': row[5],
-                'created_at': row[6],
-                'last_login': row[7]
-            })
-        conn.close()
-        return users
+    def get_users_paginated(self, page=1, per_page=10, search_query=None):
+        """Get paginated list of users"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Base query
+            query = '''
+                SELECT id, email, first_name, last_name, subscription_plan, 
+                       subscription_status, created_at, last_login, is_active
+                FROM users
+            '''
+            params = []
+            
+            # Add search condition if query provided
+            if search_query:
+                query += ''' WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ? '''
+                search_term = f"%{search_query}%"
+                params.extend([search_term, search_term, search_term])
+            
+            # Add pagination
+            query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+            params.extend([per_page, (page - 1) * per_page])
+            
+            # Execute query
+            cursor.execute(query, params)
+            users = []
+            for row in cursor.fetchall():
+                users.append({
+                    'id': row[0],
+                    'email': row[1],
+                    'first_name': row[2],
+                    'last_name': row[3],
+                    'subscription_plan': row[4],
+                    'subscription_status': row[5],
+                    'created_at': row[6],
+                    'last_login': row[7],
+                    'is_active': bool(row[8])
+                })
+            
+            # Get total count for pagination
+            count_query = 'SELECT COUNT(*) FROM users'
+            if search_query:
+                count_query += ' WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ?'
+                cursor.execute(count_query, [f"%{search_query}%"] * 3)
+            else:
+                cursor.execute(count_query)
+            
+            total = cursor.fetchone()[0]
+            
+            return {
+                'users': users,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page,
+                'current_page': page
+            }
+            
+        except Exception as e:
+            print(f"❌ Error getting paginated users: {e}")
+            return {'users': [], 'total': 0, 'pages': 0, 'current_page': page}
+        finally:
+            if 'conn' in locals():
+                conn.close()
 
     def set_gmail_email(self, user_id, gmail_email):
         """Set or clear the user's linked Gmail email address"""
