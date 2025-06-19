@@ -3426,6 +3426,7 @@ def admin_user_count():
     return jsonify({'user_count': count})
 
 @app.route('/admin/users')
+@app.route('/admin/users/list')
 @admin_required
 def admin_users_list():
     """User management interface"""
