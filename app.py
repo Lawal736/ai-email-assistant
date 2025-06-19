@@ -3627,38 +3627,30 @@ def analyze_emails():
 
 # Admin Dashboard Routes
 @app.route('/admin')
+@app.route('/admin/dashboard')
 @admin_required
 def admin_dashboard():
-    """Admin dashboard with overview stats"""
+    """Admin dashboard"""
     try:
         # Get database stats
-        db_stats = user_model.get_database_stats()
+        total_users = db_manager.get_total_users()
+        active_subscriptions = db_manager.get_active_subscriptions_count()
+        recent_activity = db_manager.get_recent_activity(limit=10)
         
-        # Get user stats
-        total_users = user_model.get_total_users()
-        active_subscriptions = user_model.get_active_subscriptions_count()
+        # Get table stats
+        table_stats = db_manager.get_table_stats()
         
-        # Get today's email stats
-        today = datetime.now().date()
-        emails_today = user_model.get_emails_processed_count(today)
-        
-        # Get recent activity
-        recent_activity = user_model.get_recent_activity(limit=10)
-        
-        stats = {
-            'total_users': total_users,
-            'active_subscriptions': active_subscriptions,
-            'emails_today': emails_today,
-            'db_size': db_stats.get('size_formatted', 'N/A')
-        }
-        
-        return render_template('admin/dashboard.html', 
-                             stats=stats,
-                             recent_activity=recent_activity)
+        return render_template(
+            'admin/dashboard.html',
+            total_users=total_users,
+            active_subscriptions=active_subscriptions,
+            recent_activity=recent_activity,
+            table_stats=table_stats
+        )
     except Exception as e:
-        print(f"❌ Error in admin dashboard: {str(e)}")
+        print(f"❌ Error loading admin dashboard: {e}")
         flash('Error loading admin dashboard', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('dashboard'))
 
 @app.route('/admin/refresh-stats')
 @admin_required
@@ -3750,71 +3742,6 @@ def admin_logs():
         print(f"❌ Error loading logs: {e}")
         flash('Error loading logs', 'error')
         return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/dashboard')
-@admin_required
-def admin_dashboard():
-    """Admin dashboard"""
-    try:
-        # Get database stats
-        total_users = db_manager.get_total_users()
-        active_subscriptions = db_manager.get_active_subscriptions_count()
-        recent_activity = db_manager.get_recent_activity(limit=10)
-        
-        # Get table stats
-        table_stats = db_manager.get_table_stats()
-        
-        return render_template(
-            'admin/dashboard.html',
-            total_users=total_users,
-            active_subscriptions=active_subscriptions,
-            recent_activity=recent_activity,
-            table_stats=table_stats
-        )
-    except Exception as e:
-        print(f"❌ Error loading admin dashboard: {e}")
-        flash('Error loading admin dashboard', 'error')
-        return redirect(url_for('dashboard'))
-
-@app.route('/admin/users/<int:user_id>', methods=['GET', 'PUT', 'DELETE'])
-@admin_required
-def admin_user_detail(user_id):
-    """Admin user detail endpoint"""
-    try:
-        if request.method == 'GET':
-            user = db_manager.get_user_by_id(user_id)
-            if not user:
-                return jsonify({'error': 'User not found'}), 404
-            return jsonify(user)
-            
-        elif request.method == 'PUT':
-            data = request.get_json()
-            if not data:
-                return jsonify({'error': 'No data provided'}), 400
-                
-            # Update user
-            success = db_manager.update_user(
-                user_id,
-                email=data.get('email'),
-                first_name=data.get('first_name'),
-                last_name=data.get('last_name'),
-                subscription_plan=data.get('subscription_plan'),
-                is_active=data.get('is_active')
-            )
-            
-            if success:
-                return jsonify({'success': True})
-            return jsonify({'error': 'Failed to update user'}), 500
-            
-        elif request.method == 'DELETE':
-            success = db_manager.delete_user(user_id)
-            if success:
-                return jsonify({'success': True})
-            return jsonify({'error': 'Failed to delete user'}), 500
-            
-    except Exception as e:
-        print(f"❌ Error in admin user detail: {e}")
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/optimize-database', methods=['POST'])
 @admin_required
