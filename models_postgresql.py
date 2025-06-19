@@ -173,6 +173,24 @@ class DatabaseManager:
                 ON user_vip_senders(user_id)
             ''')
             
+            # Create user_email_filters table for user-level email filtering
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_email_filters (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    filter_type VARCHAR(32) NOT NULL, -- sender, subject, keyword, regex
+                    pattern TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    UNIQUE(user_id, filter_type, pattern)
+                )
+            ''')
+            # Create index for faster lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_email_filters_lookup 
+                ON user_email_filters(user_id)
+            ''')
+            
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)')
@@ -1021,6 +1039,55 @@ class User:
                 DELETE FROM user_vip_senders 
                 WHERE user_id = %s AND vip_email = %s
             ''', (user_id, vip_email.lower().strip()))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def get_email_filters(self, user_id):
+        """Get list of email filters for a user (PostgreSQL)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT filter_type, pattern, created_at 
+                FROM user_email_filters 
+                WHERE user_id = %s 
+                ORDER BY created_at ASC
+            ''', (user_id,))
+            filters = [
+                {'filter_type': row[0], 'pattern': row[1], 'created_at': row[2]} for row in cursor.fetchall()
+            ]
+            return filters
+        finally:
+            conn.close()
+
+    def add_email_filter(self, user_id, filter_type, pattern):
+        """Add an email filter for a user (PostgreSQL)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO user_email_filters (user_id, filter_type, pattern)
+                VALUES (%s, %s, %s)
+            ''', (user_id, filter_type, pattern.strip()))
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            return False  # Already exists or error
+        finally:
+            conn.close()
+
+    def remove_email_filter(self, user_id, filter_type, pattern):
+        """Remove an email filter for a user (PostgreSQL)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                DELETE FROM user_email_filters 
+                WHERE user_id = %s AND filter_type = %s AND pattern = %s
+            ''', (user_id, filter_type, pattern.strip()))
             conn.commit()
             return cursor.rowcount > 0
         finally:

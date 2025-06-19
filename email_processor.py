@@ -344,17 +344,16 @@ class EmailProcessor:
         
         return stats
     
-    def filter_emails(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Filter out newsletters, daily alerts, and other non-essential emails"""
+    def filter_emails(self, emails: List[Dict[str, Any]], user_filters: List[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        """Filter out newsletters, daily alerts, and other non-essential emails, plus user-defined filters"""
         filtered_emails = []
         filtered_count = 0
-        
+        user_filters = user_filters or []
         for email in emails:
             subject = email.get('subject', '').lower()
             sender = email.get('sender', '').lower()
             body = email.get('body', '').lower()
-            
-            # Skip obvious newsletters and marketing emails (more specific)
+            # Built-in filters (legacy)
             if any(keyword in subject for keyword in [
                 'newsletter', 'subscribe', 'unsubscribe', 'marketing', 'promotion',
                 'special offer', 'limited time', 'discount', 'sale', 'deal'
@@ -362,8 +361,6 @@ class EmailProcessor:
                 print(f"🚫 Filtered out newsletter: {subject[:50]}...")
                 filtered_count += 1
                 continue
-            
-            # Skip obvious daily alerts and notifications (more specific)
             if any(keyword in subject for keyword in [
                 'daily digest', 'daily summary', 'daily report', 'daily update',
                 'weekly digest', 'weekly summary', 'weekly report',
@@ -372,8 +369,6 @@ class EmailProcessor:
                 print(f"🚫 Filtered out digest: {subject[:50]}...")
                 filtered_count += 1
                 continue
-            
-            # Skip obvious automated emails from common services
             if any(domain in sender for domain in [
                 'noreply@', 'no-reply@', 'donotreply@', 'do-not-reply@',
                 'notifications@', 'alerts@', 'updates@', 'system@'
@@ -381,8 +376,6 @@ class EmailProcessor:
                 print(f"🚫 Filtered out automated: {sender}")
                 filtered_count += 1
                 continue
-            
-            # Skip obvious social media notifications (more specific)
             if any(keyword in sender for keyword in [
                 'facebook.com', 'twitter.com', 'instagram.com', 'linkedin.com', 'youtube.com',
                 'tiktok.com', 'snapchat.com', 'pinterest.com'
@@ -390,8 +383,6 @@ class EmailProcessor:
                 print(f"🚫 Filtered out social media: {sender}")
                 filtered_count += 1
                 continue
-            
-            # Skip obvious shopping and e-commerce notifications (more specific)
             if any(keyword in subject for keyword in [
                 'order confirmation', 'shipping confirmation', 'delivery update',
                 'tracking', 'receipt', 'invoice', 'payment confirmation'
@@ -399,10 +390,39 @@ class EmailProcessor:
                 print(f"🚫 Filtered out shopping: {subject[:50]}...")
                 filtered_count += 1
                 continue
-            
+            # User-defined filters
+            filtered = False
+            for f in user_filters:
+                ftype = f.get('filter_type')
+                pattern = f.get('pattern', '').lower()
+                if not ftype or not pattern:
+                    continue
+                if ftype == 'sender' and pattern in sender:
+                    print(f"🚫 User filter (sender): {sender} matches {pattern}")
+                    filtered = True
+                    break
+                if ftype == 'subject' and pattern in subject:
+                    print(f"🚫 User filter (subject): {subject} matches {pattern}")
+                    filtered = True
+                    break
+                if ftype == 'keyword' and pattern in body:
+                    print(f"🚫 User filter (keyword): {pattern} in body")
+                    filtered = True
+                    break
+                if ftype == 'regex':
+                    try:
+                        if re.search(pattern, subject) or re.search(pattern, sender) or re.search(pattern, body):
+                            print(f"🚫 User filter (regex): {pattern} matched email")
+                            filtered = True
+                            break
+                    except Exception as e:
+                        print(f"[Filter Error] Invalid regex: {pattern} - {e}")
+                        continue
+            if filtered:
+                filtered_count += 1
+                continue
             # Keep the email
             filtered_emails.append(email)
-        
         print(f"📊 Email filtering: {len(emails)} total, {filtered_count} filtered, {len(filtered_emails)} kept")
         return filtered_emails
     

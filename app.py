@@ -621,8 +621,10 @@ def dashboard():
         emails = gmail_service.get_todays_emails(max_results=50, user_plan=plan)
         print(f"📧 Found {len(emails)} emails for today")
         
-        # Filter emails if needed
-        filtered_emails = email_processor.filter_emails(emails) if email_processor else emails
+        # Get user's email filters
+        user_filters = user_model.get_email_filters(user_id)
+        # Filter emails if needed (now with user filters)
+        filtered_emails = email_processor.filter_emails(emails, user_filters) if email_processor else emails
         print(f"📧 After filtering: {len(filtered_emails)} emails")
         
         # Use AI prioritization for Pro/Enterprise, basic for Free
@@ -3517,6 +3519,56 @@ def remove_vip_sender():
         return jsonify({'message': 'VIP sender removed successfully'})
     else:
         return jsonify({'error': 'VIP sender not found'}), 404
+
+@app.route('/api/email-filters', methods=['GET'])
+@login_required
+def get_email_filters():
+    """Get current user's email filters"""
+    user_id = session.get('user_id')
+    filters = user_model.get_email_filters(user_id)
+    user_plan = session.get('subscription_plan', 'free')
+    return jsonify({'filters': filters, 'plan': user_plan})
+
+@app.route('/api/email-filters', methods=['POST'])
+@login_required
+def add_email_filter():
+    """Add an email filter for the current user (hybrid plan logic)"""
+    user_id = session.get('user_id')
+    data = request.get_json()
+    filter_type = data.get('filter_type', '').strip().lower()
+    pattern = data.get('pattern', '').strip()
+    user_plan = session.get('subscription_plan', 'free')
+    filters = user_model.get_email_filters(user_id)
+    # Free users: max 3 filters, only sender/subject
+    if user_plan == 'free':
+        if len(filters) >= 3:
+            return jsonify({'error': 'Free plan allows up to 3 filters. Upgrade for more.'}), 403
+        if filter_type not in ['sender', 'subject']:
+            return jsonify({'error': 'Advanced filters (keyword/regex) require Pro or Enterprise plan.'}), 403
+    # Validate input
+    if not filter_type or not pattern:
+        return jsonify({'error': 'Filter type and pattern are required.'}), 400
+    success = user_model.add_email_filter(user_id, filter_type, pattern)
+    if success:
+        return jsonify({'message': 'Filter added successfully'})
+    else:
+        return jsonify({'error': 'Filter already exists or error occurred'}), 409
+
+@app.route('/api/email-filters', methods=['DELETE'])
+@login_required
+def remove_email_filter():
+    """Remove an email filter for the current user"""
+    user_id = session.get('user_id')
+    data = request.get_json()
+    filter_type = data.get('filter_type', '').strip().lower()
+    pattern = data.get('pattern', '').strip()
+    if not filter_type or not pattern:
+        return jsonify({'error': 'Filter type and pattern are required.'}), 400
+    success = user_model.remove_email_filter(user_id, filter_type, pattern)
+    if success:
+        return jsonify({'message': 'Filter removed successfully'})
+    else:
+        return jsonify({'error': 'Filter not found'}), 404
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
