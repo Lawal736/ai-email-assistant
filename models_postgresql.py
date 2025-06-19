@@ -1176,6 +1176,61 @@ class User:
         finally:
             conn.close()
 
+    def set_user_admin(self, user_id, is_admin=True):
+        """Set or unset a user as admin"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # First check if is_admin column exists
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'users' 
+                            AND column_name = 'is_admin'
+                        );
+                    """)
+                    column_exists = cur.fetchone()[0]
+                    
+                    # Add is_admin column if it doesn't exist
+                    if not column_exists:
+                        cur.execute("""
+                            ALTER TABLE users 
+                            ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+                        """)
+                        conn.commit()
+                    
+                    # Update user's admin status
+                    cur.execute("""
+                        UPDATE users 
+                        SET is_admin = %s 
+                        WHERE id = %s 
+                        RETURNING email
+                    """, (is_admin, user_id))
+                    conn.commit()
+                    
+                    result = cur.fetchone()
+                    if result:
+                        print(f"✅ {'Set' if is_admin else 'Unset'} admin status for user {result[0]}")
+                        return True
+                    return False
+                    
+        except Exception as e:
+            print(f"❌ Error setting admin status: {e}")
+            return False
+            
+    def is_user_admin(self, user_id):
+        """Check if a user is an admin"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,))
+                    result = cur.fetchone()
+                    return result[0] if result else False
+        except Exception as e:
+            print(f"❌ Error checking admin status: {e}")
+            return False
+
 class SubscriptionPlan:
     """Subscription plan model"""
     
@@ -1409,7 +1464,7 @@ class PaymentRecord:
     def get_database_stats(self):
         """Get database statistics"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     # Get database size
                     cur.execute("""
@@ -1438,7 +1493,7 @@ class PaymentRecord:
     def get_table_stats(self):
         """Get statistics for each table"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT 
@@ -1456,7 +1511,7 @@ class PaymentRecord:
     def get_total_users(self):
         """Get total number of users"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT COUNT(*) FROM users")
                     return cur.fetchone()[0]
@@ -1467,7 +1522,7 @@ class PaymentRecord:
     def get_active_subscriptions_count(self):
         """Get count of active subscriptions"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT COUNT(*) 
@@ -1482,7 +1537,7 @@ class PaymentRecord:
     def get_emails_processed_count(self, date):
         """Get count of emails processed on a specific date"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT COUNT(*) 
@@ -1497,7 +1552,7 @@ class PaymentRecord:
     def get_recent_activity(self, limit=10):
         """Get recent user activity"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT 
@@ -1528,7 +1583,7 @@ class PaymentRecord:
         """Get paginated list of users with optional search"""
         try:
             offset = (page - 1) * per_page
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     if search:
                         cur.execute("""
@@ -1568,7 +1623,7 @@ class PaymentRecord:
     def get_subscription_history(self, user_id):
         """Get user's subscription history"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT 
@@ -1599,7 +1654,7 @@ class PaymentRecord:
     def get_payment_history(self, user_id):
         """Get user's payment history"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT 
@@ -1632,7 +1687,7 @@ class PaymentRecord:
     def get_user_email_stats(self, user_id):
         """Get user's email processing statistics"""
         try:
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT 
@@ -1661,7 +1716,7 @@ class PaymentRecord:
         """Get paginated application logs"""
         try:
             offset = (page - 1) * per_page
-            with self.get_db_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     if log_type != 'all':
                         cur.execute("""

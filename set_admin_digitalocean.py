@@ -6,7 +6,7 @@ Run this on your Digital Ocean app console or via SSH
 
 import os
 import sys
-from models_postgresql import DatabaseManager, User
+from models_postgresql import DatabaseManager
 
 def set_user_as_admin(email):
     """Set a user as admin by email"""
@@ -19,7 +19,6 @@ def set_user_as_admin(email):
         
         print(f"🔧 Connecting to Digital Ocean database...")
         db_manager = DatabaseManager()
-        user_model = User(db_manager)
         
         # Get user ID from email
         with db_manager.get_connection() as conn:
@@ -34,7 +33,7 @@ def set_user_as_admin(email):
                 print(f"✅ Found user: {user_email} (ID: {user_id})")
                 
         # Set user as admin
-        success = user_model.set_user_admin(user_id, True)
+        success = db_manager.set_user_admin(user_id, True)
         if success:
             print(f"✅ Successfully set {email} as admin")
             print(f"🔄 Please log out and log back in to activate admin privileges")
