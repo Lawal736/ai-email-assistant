@@ -49,7 +49,7 @@
                 </div>
 
                 <div class="d-grid gap-2 mt-4">
-                    <a href="{{ url_for('start_gmail_auth') }}" class="btn btn-primary btn-lg">
+                    <a href="{{ url_for('start_gmail_auth') }}" class="btn btn-primary btn-lg" id="connect-gmail-btn">
                         <i class="fas fa-envelope me-2"></i>
                         Connect Gmail Account
                     </a>
@@ -58,6 +58,17 @@
                         Back to Home
                     </a>
                 </div>
+
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var btn = document.getElementById('connect-gmail-btn');
+                    if (btn) {
+                        btn.addEventListener('click', function() {
+                            console.log('[DEBUG] Connect Gmail button clicked');
+                        });
+                    }
+                });
+                </script>
 
                 <div class="mt-4">
                     <small class="text-muted">
