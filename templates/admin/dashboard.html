@@ -3,138 +3,108 @@
 {% block title %}Admin Dashboard - AI Email Assistant{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-5 mb-4">
+                <i class="fas fa-shield-alt me-2"></i>
+                Admin Dashboard
+            </h1>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-users me-2"></i>
+                        Total Users
+                    </h5>
+                    <h2 class="display-4">{{ total_users }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-star me-2"></i>
+                        Active Subscriptions
+                    </h5>
+                    <h2 class="display-4">{{ active_subscriptions }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-database me-2"></i>
+                        Database Size
+                    </h5>
+                    <h2 class="display-4">{{ table_stats.total_size|default('N/A') }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-bolt me-2"></i>
+                        Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <a href="{{ url_for('admin_users_list') }}" class="btn btn-primary w-100 mb-2">
+                                <i class="fas fa-users me-2"></i>
+                                Manage Users
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="{{ url_for('admin_database') }}" class="btn btn-info w-100 mb-2">
+                                <i class="fas fa-database me-2"></i>
+                                Database Tools
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="{{ url_for('admin_logs') }}" class="btn btn-secondary w-100 mb-2">
+                                <i class="fas fa-list me-2"></i>
+                                View Logs
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="{{ url_for('backup_database_endpoint') }}" class="btn btn-warning w-100 mb-2">
+                                <i class="fas fa-download me-2"></i>
+                                Backup Database
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
     <div class="row">
-        <!-- Sidebar -->
-        <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar">
-            <div class="position-sticky pt-3">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="{{ url_for('admin_dashboard') }}">
-                            <i class="fas fa-tachometer-alt me-2"></i>
-                            Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_users') }}">
-                            <i class="fas fa-users me-2"></i>
-                            Users
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_subscriptions') }}">
-                            <i class="fas fa-credit-card me-2"></i>
-                            Subscriptions
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_database') }}">
-                            <i class="fas fa-database me-2"></i>
-                            Database
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_logs') }}">
-                            <i class="fas fa-list me-2"></i>
-                            Logs
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </nav>
-
-        <!-- Main content -->
-        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Admin Dashboard</h1>
-                <div class="btn-toolbar mb-2 mb-md-0">
-                    <div class="btn-group me-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshStats()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Stats Cards -->
-            <div class="row">
-                <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="card border-left-primary shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                        Total Users</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_users }}</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-users fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="card border-left-success shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                        Active Subscriptions</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.active_subscriptions }}</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-check-circle fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="card border-left-info shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                        Today's Emails Processed</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.emails_today }}</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-envelope fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="card border-left-warning shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                        Database Size</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.db_size }}</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-database fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Activity -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        Recent Activity
+                    </h5>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-bordered" width="100%" cellspacing="0">
+                        <table class="table">
                             <thead>
                                 <tr>
                                     <th>Time</th>
@@ -147,9 +117,13 @@
                                 {% for activity in recent_activity %}
                                 <tr>
                                     <td>{{ activity.timestamp }}</td>
-                                    <td>{{ activity.user }}</td>
+                                    <td>{{ activity.user_email }}</td>
                                     <td>{{ activity.action }}</td>
                                     <td>{{ activity.details }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center">No recent activity</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -157,22 +131,7 @@
                     </div>
                 </div>
             </div>
-        </main>
+        </div>
     </div>
 </div>
-
-<script>
-function refreshStats() {
-    fetch('/admin/refresh-stats')
-        .then(response => response.json())
-        .then(data => {
-            // Update stats
-            document.querySelector('.total-users').textContent = data.total_users;
-            document.querySelector('.active-subscriptions').textContent = data.active_subscriptions;
-            document.querySelector('.emails-today').textContent = data.emails_today;
-            document.querySelector('.db-size').textContent = data.db_size;
-        })
-        .catch(error => console.error('Error:', error));
-}
-</script>
 {% endblock %} 

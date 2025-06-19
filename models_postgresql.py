@@ -44,6 +44,7 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE,
+                    is_admin BOOLEAN DEFAULT FALSE,
                     gmail_token TEXT,
                     gmail_email VARCHAR(255),
                     subscription_plan VARCHAR(50) DEFAULT 'free',
@@ -53,6 +54,19 @@ class DatabaseManager:
                     api_usage_count INTEGER DEFAULT 0,
                     monthly_usage_limit INTEGER DEFAULT 100
                 )
+            ''')
+            
+            # Add is_admin column if it doesn't exist
+            cursor.execute('''
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'users' AND column_name = 'is_admin'
+                    ) THEN
+                        ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+                    END IF;
+                END $$;
             ''')
             
             # Robust token storage table
@@ -238,6 +252,243 @@ class DatabaseManager:
     def get_connection(self):
         """Get database connection"""
         return psycopg2.connect(**self.db_config)
+
+    def get_all_users(self):
+        """Get all users with basic info"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT id, email, first_name, last_name, created_at, last_login, 
+                       is_active, is_admin, subscription_plan, subscription_status
+                FROM users
+                ORDER BY created_at DESC
+            ''')
+            users = cursor.fetchall()
+            return [dict(user) for user in users]
+        except Exception as e:
+            print(f"❌ Error getting all users: {e}")
+            return []
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_database_stats(self):
+        """Get database statistics"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            # Get table sizes
+            cursor.execute('''
+                SELECT 
+                    pg_size_pretty(pg_database_size(current_database())) as total_size,
+                    pg_size_pretty(pg_total_relation_size('users')) as users_size,
+                    pg_size_pretty(pg_total_relation_size('processed_emails')) as emails_size,
+                    pg_size_pretty(pg_total_relation_size('payment_records')) as payments_size
+            ''')
+            stats = dict(cursor.fetchone())
+            
+            # Get record counts
+            cursor.execute('''
+                SELECT 
+                    (SELECT COUNT(*) FROM users) as total_users,
+                    (SELECT COUNT(*) FROM users WHERE subscription_status = 'active' AND subscription_plan != 'free') as active_subscriptions,
+                    (SELECT COUNT(*) FROM processed_emails WHERE DATE(processed_at) = CURRENT_DATE) as emails_today,
+                    (SELECT COUNT(*) FROM payment_records WHERE DATE(created_at) = CURRENT_DATE) as payments_today
+            ''')
+            counts = dict(cursor.fetchone())
+            
+            return {**stats, **counts}
+        except Exception as e:
+            print(f"❌ Error getting database stats: {e}")
+            return {}
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_system_logs(self, limit=100):
+        """Get system logs"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cursor.execute('''
+                SELECT 
+                    u.email as user_email,
+                    ut.action_type as action,
+                    ut.email_count as details,
+                    ut.created_at as timestamp
+                FROM usage_tracking ut
+                JOIN users u ON u.id = ut.user_id
+                ORDER BY ut.created_at DESC
+                LIMIT %s
+            ''', (limit,))
+            logs = cursor.fetchall()
+            return [dict(log) for log in logs]
+        except Exception as e:
+            print(f"❌ Error getting system logs: {e}")
+            return []
+        finally:
+            cursor.close()
+            conn.close()
+
+    def backup_database(self):
+        """Create a database backup"""
+        import tempfile
+        import subprocess
+        import os
+        
+        try:
+            # Create temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.sql')
+            temp_file.close()
+            
+            # Build pg_dump command
+            cmd = [
+                'pg_dump',
+                '-h', self.db_config['host'],
+                '-p', str(self.db_config['port']),
+                '-U', self.db_config['user'],
+                '-d', self.db_config['database'],
+                '-f', temp_file.name
+            ]
+            
+            # Set PGPASSWORD environment variable
+            env = os.environ.copy()
+            env['PGPASSWORD'] = self.db_config['password']
+            
+            # Run pg_dump
+            subprocess.run(cmd, env=env, check=True)
+            
+            return temp_file.name
+        except Exception as e:
+            print(f"❌ Error creating database backup: {e}")
+            raise
+
+    def update_user(self, user_id, email=None, first_name=None, last_name=None, 
+                    subscription_plan=None, is_active=None):
+        """Update user details"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            updates = []
+            values = []
+            
+            if email is not None:
+                updates.append("email = %s")
+                values.append(email)
+            if first_name is not None:
+                updates.append("first_name = %s")
+                values.append(first_name)
+            if last_name is not None:
+                updates.append("last_name = %s")
+                values.append(last_name)
+            if subscription_plan is not None:
+                updates.append("subscription_plan = %s")
+                values.append(subscription_plan)
+            if is_active is not None:
+                updates.append("is_active = %s")
+                values.append(is_active)
+            
+            if not updates:
+                return True
+            
+            values.append(user_id)
+            cursor.execute(f'''
+                UPDATE users 
+                SET {', '.join(updates)}
+                WHERE id = %s
+            ''', values)
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error updating user: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_user(self, user_id):
+        """Delete a user"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Delete from all related tables first
+            cursor.execute('DELETE FROM user_tokens WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM user_preferences WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM payment_records WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM usage_tracking WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM password_reset_tokens WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM processed_emails WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM user_vip_senders WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM user_email_filters WHERE user_id = %s', (user_id,))
+            cursor.execute('DELETE FROM user_email_analysis WHERE user_id = %s', (user_id,))
+            
+            # Finally delete the user
+            cursor.execute('DELETE FROM users WHERE id = %s', (user_id,))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error deleting user: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def optimize_database(self):
+        """Optimize database tables"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get all tables
+            cursor.execute('''
+                SELECT tablename 
+                FROM pg_tables 
+                WHERE schemaname = 'public'
+            ''')
+            tables = cursor.fetchall()
+            
+            # Vacuum and analyze each table
+            for table in tables:
+                cursor.execute(f'VACUUM ANALYZE {table[0]}')
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error optimizing database: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def clear_cache(self):
+        """Clear application cache"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Clear email analysis cache
+            cursor.execute('TRUNCATE TABLE user_email_analysis')
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error clearing cache: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
 
 class User:
     """User model for PostgreSQL"""
@@ -1465,32 +1716,37 @@ class PaymentRecord:
 
     def get_database_stats(self):
         """Get database statistics"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
         try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    # Get database size
-                    cur.execute("""
-                        SELECT pg_size_pretty(pg_database_size(current_database())) as size,
-                               pg_database_size(current_database()) as size_bytes
-                    """)
-                    size_data = cur.fetchone()
-                    
-                    # Get table counts
-                    cur.execute("""
-                        SELECT COUNT(*) as table_count 
-                        FROM information_schema.tables 
-                        WHERE table_schema = 'public'
-                    """)
-                    table_count = cur.fetchone()[0]
-                    
-                    return {
-                        'size_formatted': size_data[0],
-                        'size_bytes': size_data[1],
-                        'table_count': table_count
-                    }
+            # Get table sizes
+            cursor.execute('''
+                SELECT 
+                    pg_size_pretty(pg_database_size(current_database())) as total_size,
+                    pg_size_pretty(pg_total_relation_size('users')) as users_size,
+                    pg_size_pretty(pg_total_relation_size('processed_emails')) as emails_size,
+                    pg_size_pretty(pg_total_relation_size('payment_records')) as payments_size
+            ''')
+            stats = dict(cursor.fetchone())
+            
+            # Get record counts
+            cursor.execute('''
+                SELECT 
+                    (SELECT COUNT(*) FROM users) as total_users,
+                    (SELECT COUNT(*) FROM users WHERE subscription_status = 'active' AND subscription_plan != 'free') as active_subscriptions,
+                    (SELECT COUNT(*) FROM processed_emails WHERE DATE(processed_at) = CURRENT_DATE) as emails_today,
+                    (SELECT COUNT(*) FROM payment_records WHERE DATE(created_at) = CURRENT_DATE) as payments_today
+            ''')
+            counts = dict(cursor.fetchone())
+            
+            return {**stats, **counts}
         except Exception as e:
             print(f"❌ Error getting database stats: {e}")
             return {}
+        finally:
+            cursor.close()
+            conn.close()
             
     def get_table_stats(self):
         """Get statistics for each table"""

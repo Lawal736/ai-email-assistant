@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Database - AI Email Assistant{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-5 mb-4">
+                <i class="fas fa-database me-2"></i>
+                Database Tools
+            </h1>
+        </div>
+    </div>
+
+    <!-- Database Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-hdd me-2"></i>
+                        Total Size
+                    </h5>
+                    <h2 class="display-4">{{ stats.total_size }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-users me-2"></i>
+                        Users Table
+                    </h5>
+                    <h2 class="display-4">{{ stats.users_size }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-envelope me-2"></i>
+                        Emails Table
+                    </h5>
+                    <h2 class="display-4">{{ stats.emails_size }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-credit-card me-2"></i>
+                        Payments Table
+                    </h5>
+                    <h2 class="display-4">{{ stats.payments_size }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-tools me-2"></i>
+                        Database Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <a href="{{ url_for('backup_database_endpoint') }}" class="btn btn-primary w-100 mb-2">
+                                <i class="fas fa-download me-2"></i>
+                                Backup Database
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-warning w-100 mb-2" onclick="optimizeDatabase()">
+                                <i class="fas fa-broom me-2"></i>
+                                Optimize Tables
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-danger w-100 mb-2" onclick="clearCache()">
+                                <i class="fas fa-trash me-2"></i>
+                                Clear Cache
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Record Counts -->
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Record Counts
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Total Users</td>
+                                    <td>{{ stats.total_users }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Active Subscriptions</td>
+                                    <td>{{ stats.active_subscriptions }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Emails Today</td>
+                                    <td>{{ stats.emails_today }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Payments Today</td>
+                                    <td>{{ stats.payments_today }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function optimizeDatabase() {
+    if (!confirm('Are you sure you want to optimize the database tables? This may take a few minutes.')) {
+        return;
+    }
+    
+    fetch('/admin/optimize-database', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            alert('Database optimization completed successfully.');
+            window.location.reload();
+        } else {
+            alert('Error optimizing database: ' + result.error);
+        }
+    });
+}
+
+function clearCache() {
+    if (!confirm('Are you sure you want to clear the cache? This will remove all cached data.')) {
+        return;
+    }
+    
+    fetch('/admin/clear-cache', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            alert('Cache cleared successfully.');
+            window.location.reload();
+        } else {
+            alert('Error clearing cache: ' + result.error);
+        }
+    });
+}
+</script>
+{% endblock %} 

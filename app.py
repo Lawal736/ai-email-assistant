@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from functools import wraps
@@ -213,8 +213,9 @@ def subscription_required(plan_name='free'):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('user_id') or not session.get('is_admin', False):
-            abort(403)
+        if not session.get('is_admin'):
+            flash('You must be an admin to access this page.', 'error')
+            return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -3244,49 +3245,20 @@ def debug_user_status():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/backup-database')
+@admin_required
 def backup_database_endpoint():
-    """Admin endpoint to create database backup"""
+    """Backup database"""
     try:
-        from database_backup import backup_database
-        import tempfile
-        import os
-        
-        # Create backup in temp directory
-        db_path = user_model.db_manager.db_path if user_model else 'users.db'
-        
-        # Create temporary backup file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-            temp_backup_path = temp_file.name
-        
-        # Create backup using our utility
-        backup_file = backup_database(db_path, temp_backup_path)
-        
-        if backup_file and os.path.exists(backup_file):
-            # Read backup content
-            with open(backup_file, 'r') as f:
-                backup_content = f.read()
-            
-            # Clean up temp file
-            os.unlink(backup_file)
-            
-            # Generate download filename
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            download_name = f'database_backup_{timestamp}.json'
-            
-            # Return as downloadable response
-            from flask import Response
-            return Response(
-                backup_content,
-                mimetype='application/json',
-                headers={'Content-Disposition': f'attachment; filename={download_name}'}
-            )
-        else:
-            return jsonify({'error': 'Backup failed'}), 500
-            
+        backup_file = db_manager.backup_database()
+        return send_file(
+            backup_file,
+            as_attachment=True,
+            download_name=f"database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
+        )
     except Exception as e:
-        print(f"❌ Backup endpoint error: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ Error backing up database: {e}")
+        flash('Error backing up database', 'error')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/database-stats')
 def database_stats_endpoint():
@@ -3455,13 +3427,24 @@ def admin_user_count():
 
 @app.route('/admin/users')
 @admin_required
-def admin_users():
-    """Paginated list of users"""
-    page = int(request.args.get('page', 1))
-    per_page = 20
-    offset = (page - 1) * per_page
-    users = user_model.get_users_paginated(offset, per_page) if user_model else []
-    return jsonify({'users': users, 'page': page, 'per_page': per_page})
+def admin_users_list():
+    """User management interface"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '')
+        
+        users = user_model.get_users_paginated(page=page, 
+                                             search=search,
+                                             per_page=50)
+        
+        return render_template('admin/users.html',
+                             users=users,
+                             search=search,
+                             page=page)
+    except Exception as e:
+        print(f"❌ Error loading users list: {e}")
+        flash('Error loading users list', 'error')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/search-users')
 @admin_required
@@ -3699,40 +3682,16 @@ def admin_refresh_stats():
 @app.route('/admin/database')
 @admin_required
 def admin_database():
-    """Database management interface"""
+    """Admin database tools"""
     try:
-        # Get database stats
-        db_stats = user_model.get_database_stats()
-        
-        # Get table sizes
-        table_stats = user_model.get_table_stats()
-        
-        return render_template('admin/database.html',
-                             db_stats=db_stats,
-                             table_stats=table_stats)
+        stats = db_manager.get_database_stats()
+        return render_template('admin/database.html', stats=stats)
     except Exception as e:
-        flash(f'Error loading database stats: {str(e)}', 'error')
+        print(f"❌ Error loading database tools: {e}")
+        flash('Error loading database tools', 'error')
         return redirect(url_for('admin_dashboard'))
 
-@app.route('/admin/users')
-@admin_required
-def admin_users_list():
-    """User management interface"""
-    try:
-        page = request.args.get('page', 1, type=int)
-        search = request.args.get('search', '')
-        
-        users = user_model.get_users_paginated(page=page, 
-                                             search=search,
-                                             per_page=50)
-        
-        return render_template('admin/users.html',
-                             users=users,
-                             search=search,
-                             page=page)
-    except Exception as e:
-        flash(f'Error loading users: {str(e)}', 'error')
-        return redirect(url_for('admin_dashboard'))
+
 
 @app.route('/admin/user/<int:user_id>')
 @admin_required
@@ -3783,22 +3742,105 @@ def admin_user_edit(user_id):
 @app.route('/admin/logs')
 @admin_required
 def admin_logs():
-    """View application logs"""
+    """Admin logs viewer"""
     try:
-        page = request.args.get('page', 1, type=int)
-        log_type = request.args.get('type', 'all')
-        
-        logs = user_model.get_logs_paginated(page=page,
-                                           log_type=log_type,
-                                           per_page=100)
-        
-        return render_template('admin/logs.html',
-                             logs=logs,
-                             log_type=log_type,
-                             page=page)
+        logs = db_manager.get_system_logs(limit=100)
+        return render_template('admin/logs.html', logs=logs)
     except Exception as e:
-        flash(f'Error loading logs: {str(e)}', 'error')
+        print(f"❌ Error loading logs: {e}")
+        flash('Error loading logs', 'error')
         return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/dashboard')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard"""
+    try:
+        # Get database stats
+        total_users = db_manager.get_total_users()
+        active_subscriptions = db_manager.get_active_subscriptions_count()
+        recent_activity = db_manager.get_recent_activity(limit=10)
+        
+        # Get table stats
+        table_stats = db_manager.get_table_stats()
+        
+        return render_template(
+            'admin/dashboard.html',
+            total_users=total_users,
+            active_subscriptions=active_subscriptions,
+            recent_activity=recent_activity,
+            table_stats=table_stats
+        )
+    except Exception as e:
+        print(f"❌ Error loading admin dashboard: {e}")
+        flash('Error loading admin dashboard', 'error')
+        return redirect(url_for('dashboard'))
+
+@app.route('/admin/users/<int:user_id>', methods=['GET', 'PUT', 'DELETE'])
+@admin_required
+def admin_user_detail(user_id):
+    """Admin user detail endpoint"""
+    try:
+        if request.method == 'GET':
+            user = db_manager.get_user_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            return jsonify(user)
+            
+        elif request.method == 'PUT':
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+                
+            # Update user
+            success = db_manager.update_user(
+                user_id,
+                email=data.get('email'),
+                first_name=data.get('first_name'),
+                last_name=data.get('last_name'),
+                subscription_plan=data.get('subscription_plan'),
+                is_active=data.get('is_active')
+            )
+            
+            if success:
+                return jsonify({'success': True})
+            return jsonify({'error': 'Failed to update user'}), 500
+            
+        elif request.method == 'DELETE':
+            success = db_manager.delete_user(user_id)
+            if success:
+                return jsonify({'success': True})
+            return jsonify({'error': 'Failed to delete user'}), 500
+            
+    except Exception as e:
+        print(f"❌ Error in admin user detail: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/optimize-database', methods=['POST'])
+@admin_required
+def admin_optimize_database():
+    """Optimize database tables"""
+    try:
+        success = db_manager.optimize_database()
+        if success:
+            return jsonify({'success': True})
+        return jsonify({'error': 'Failed to optimize database'}), 500
+    except Exception as e:
+        print(f"❌ Error optimizing database: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/clear-cache', methods=['POST'])
+@admin_required
+def admin_clear_cache():
+    """Clear application cache"""
+    try:
+        success = db_manager.clear_cache()
+        if success:
+            return jsonify({'success': True})
+        return jsonify({'error': 'Failed to clear cache'}), 500
+    except Exception as e:
+        print(f"❌ Error clearing cache: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

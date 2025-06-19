@@ -568,32 +568,36 @@
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user-circle me-1"></i>
-                                {{ session.get('user_name', session.get('user_email', 'User')) }}
+                                {{ session.get('user_name') or session.get('user_email') }}
                             </a>
-                            <ul class="dropdown-menu">
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                {% if session.get('is_admin') %}
                                 <li>
-                                    <a class="dropdown-item" href="{{ url_for('dashboard') }}">
-                                        <i class="fas fa-tachometer-alt me-2"></i>
-                                        Dashboard
+                                    <a class="dropdown-item" href="{{ url_for('admin_dashboard') }}">
+                                        <i class="fas fa-shield-alt me-2"></i>Admin Dashboard
                                     </a>
                                 </li>
+                                <li><hr class="dropdown-divider"></li>
+                                {% endif %}
                                 <li>
                                     <a class="dropdown-item" href="{{ url_for('account') }}">
-                                        <i class="fas fa-user me-2"></i>
-                                        Account
+                                        <i class="fas fa-user me-2"></i>Account Settings
                                     </a>
                                 </li>
                                 <li>
                                     <a class="dropdown-item" href="{{ url_for('account_subscription') }}">
-                                        <i class="fas fa-credit-card me-2"></i>
-                                        Subscription
+                                        <i class="fas fa-star me-2"></i>Subscription
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('account_billing') }}">
+                                        <i class="fas fa-credit-card me-2"></i>Billing
                                     </a>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
-                                    <a class="dropdown-item" href="{{ url_for('logout') }}">
-                                        <i class="fas fa-sign-out-alt me-2"></i>
-                                        Logout
+                                    <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                        <i class="fas fa-sign-out-alt me-2"></i>Logout
                                     </a>
                                 </li>
                             </ul>
