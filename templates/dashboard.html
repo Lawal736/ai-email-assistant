@@ -51,6 +51,10 @@
                         <a href="#" class="text-warning fw-bold" style="font-size: 0.95em;" onclick="showVipModal(event)">
                             <i class="fas fa-star me-1"></i>Manage VIP Senders
                         </a>
+                        <span class="mx-2">|</span>
+                        <a href="#" class="text-primary fw-bold" style="font-size: 0.95em;" onclick="showFiltersModal(event)">
+                            <i class="fas fa-filter me-1"></i>Manage Filters
+                        </a>
                     </div>
                     <div class="text-muted" style="font-size: 0.95em;">
                         Smarter, more personalized email triage
@@ -517,6 +521,53 @@
   </div>
 </div>
 
+<!-- Email Filters Modal -->
+<div class="modal fade" id="filtersModal" tabindex="-1" aria-labelledby="filtersModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content premium-modal">
+      <div class="modal-header bg-gradient-primary text-white">
+        <h5 class="modal-title" id="filtersModalLabel">
+          <i class="fas fa-filter me-2"></i>Manage Email Filters
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3">Hide or suppress emails by sender, subject, keyword, or regex. <span id="filterPlanNotice"></span></p>
+        <!-- Add Filter Form -->
+        <form id="addFilterForm" class="row g-2 align-items-end mb-4">
+          <div class="col-5">
+            <label for="filterTypeInput" class="form-label mb-1">Type</label>
+            <select class="form-select" id="filterTypeInput" required>
+              <option value="sender">Sender</option>
+              <option value="subject">Subject</option>
+              <option value="keyword" class="pro-feature">Keyword</option>
+              <option value="regex" class="pro-feature">Regex</option>
+            </select>
+          </div>
+          <div class="col-5">
+            <label for="filterPatternInput" class="form-label mb-1">Pattern</label>
+            <input type="text" class="form-control" id="filterPatternInput" placeholder="e.g. noreply@, alert, ..." required>
+          </div>
+          <div class="col-2">
+            <button type="submit" class="btn btn-primary w-100">
+              <i class="fas fa-plus me-1"></i>Add
+            </button>
+          </div>
+        </form>
+        <!-- Filters List -->
+        <div id="filtersList">
+          <div class="text-center text-muted">
+            <i class="fas fa-spinner fa-spin"></i> Loading filters...
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
     /* Dashboard-specific modern styling */
     .dashboard-header {
@@ -872,6 +923,50 @@
         font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
         font-size: 0.85rem;
     }
+
+    .premium-modal {
+        background: linear-gradient(135deg, #f8fafc 80%, #e0e7ff 100%);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(99,102,241,0.15);
+        border: 1px solid #c7d2fe;
+    }
+    .bg-gradient-primary {
+        background: linear-gradient(90deg, #6366f1 0%, #3b82f6 100%) !important;
+    }
+    .badge-filter-type {
+        font-size: 0.95em;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 0.35em 0.7em;
+        margin-right: 0.5em;
+        letter-spacing: 0.5px;
+    }
+    .badge-sender { background: #6366f1; color: #fff; }
+    .badge-subject { background: #f59e42; color: #fff; }
+    .badge-keyword { background: #10b981; color: #fff; }
+    .badge-regex { background: #ef4444; color: #fff; }
+    .pro-feature { color: #6366f1; font-weight: 600; }
+    .filter-upgrade {
+        background: #fef3c7;
+        color: #b45309;
+        border-radius: 8px;
+        padding: 0.5em 1em;
+        font-weight: 600;
+        margin-bottom: 1em;
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+    }
+    .filter-remove-btn {
+        border: none;
+        background: transparent;
+        color: #ef4444;
+        font-size: 1.1em;
+        margin-left: 0.5em;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    .filter-remove-btn:hover { color: #b91c1c; }
 </style>
 {% endblock %}
 
@@ -2018,5 +2113,103 @@ document.addEventListener('DOMContentLoaded', function () {
         new bootstrap.Tooltip(tooltipTriggerEl);
     });
 });
+
+function showFiltersModal(event) {
+  event.preventDefault();
+  const modal = new bootstrap.Modal(document.getElementById('filtersModal'));
+  modal.show();
+  loadEmailFilters();
+}
+
+function loadEmailFilters() {
+  fetch('/api/email-filters')
+    .then(response => response.json())
+    .then(data => {
+      const listContainer = document.getElementById('filtersList');
+      const plan = data.plan || 'free';
+      const filters = data.filters || [];
+      // Plan notice
+      const planNotice = document.getElementById('filterPlanNotice');
+      if (plan === 'free') {
+        planNotice.innerHTML = '<span class="filter-upgrade"><i class="fas fa-gem me-1"></i>Upgrade to Pro/Enterprise for unlimited and advanced filters!</span>';
+        document.querySelectorAll('#filterTypeInput option.pro-feature').forEach(opt => opt.disabled = true);
+      } else {
+        planNotice.innerHTML = '<span class="badge bg-success">Pro/Enterprise: Unlimited & advanced filters enabled</span>';
+        document.querySelectorAll('#filterTypeInput option.pro-feature').forEach(opt => opt.disabled = false);
+      }
+      // List
+      if (filters.length > 0) {
+        listContainer.innerHTML = filters.map(f => {
+          let badgeClass = 'badge-filter-type ';
+          if (f.filter_type === 'sender') badgeClass += 'badge-sender';
+          else if (f.filter_type === 'subject') badgeClass += 'badge-subject';
+          else if (f.filter_type === 'keyword') badgeClass += 'badge-keyword';
+          else if (f.filter_type === 'regex') badgeClass += 'badge-regex';
+          return `<div class="d-flex align-items-center justify-content-between p-2 border rounded mb-2 bg-white shadow-sm">
+            <div>
+              <span class="${badgeClass}">${f.filter_type.charAt(0).toUpperCase() + f.filter_type.slice(1)}</span>
+              <span class="fw-medium text-dark">${f.pattern}</span>
+            </div>
+            <button class="filter-remove-btn" title="Remove" onclick="removeEmailFilter('${f.filter_type}','${encodeURIComponent(f.pattern)}')">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>`;
+        }).join('');
+      } else {
+        listContainer.innerHTML = '<p class="text-muted text-center">No filters added yet.</p>';
+      }
+    })
+    .catch(error => {
+      document.getElementById('filtersList').innerHTML = '<p class="text-danger text-center">Error loading filters.</p>';
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const addFilterForm = document.getElementById('addFilterForm');
+  if (addFilterForm) {
+    addFilterForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const type = document.getElementById('filterTypeInput').value;
+      const pattern = document.getElementById('filterPatternInput').value.trim();
+      if (!type || !pattern) return;
+      fetch('/api/email-filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filter_type: type, pattern: pattern })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.message) {
+          document.getElementById('filterPatternInput').value = '';
+          loadEmailFilters();
+          showAlert('Filter added successfully!', 'success');
+        } else {
+          showAlert(data.error || 'Failed to add filter', 'danger');
+        }
+      })
+      .catch(() => showAlert('Error adding filter', 'danger'));
+    });
+  }
+});
+
+function removeEmailFilter(type, pattern) {
+  if (confirm(`Remove filter: ${type} - ${decodeURIComponent(pattern)}?`)) {
+    fetch('/api/email-filters', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filter_type: type, pattern: decodeURIComponent(pattern) })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.message) {
+        loadEmailFilters();
+        showAlert('Filter removed successfully!', 'success');
+      } else {
+        showAlert(data.error || 'Failed to remove filter', 'danger');
+      }
+    })
+    .catch(() => showAlert('Error removing filter', 'danger'));
+  }
+}
 </script>
 {% endblock %} 
