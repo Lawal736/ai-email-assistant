@@ -3651,8 +3651,8 @@ def admin_dashboard():
         active_subscriptions = user_model.get_active_subscriptions_count() if user_model else 0
         recent_activity = user_model.get_recent_activity(limit=10) if user_model else []
         
-        # Get table stats from user_model
-        table_stats = user_model.get_table_stats() if user_model else {}
+        # Get table stats from database manager instead of user_model
+        table_stats = user_model.db_manager.get_table_stats() if user_model else {}
         
         return render_template(
             'admin/dashboard.html',

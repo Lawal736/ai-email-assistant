@@ -42,9 +42,10 @@
                 <div class="card-body">
                     <h5 class="card-title">
                         <i class="fas fa-database me-2"></i>
-                        Database Size
+                        Database Tables
                     </h5>
-                    <h2 class="display-4">{{ table_stats.total_size|default('N/A') }}</h2>
+                    <h2 class="display-4">{{ table_stats|length|default('N/A') }}</h2>
+                    <p class="text-muted">Total tables in database</p>
                 </div>
             </div>
         </div>
