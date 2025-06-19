@@ -586,25 +586,136 @@ class User:
     
     def get_user_by_id(self, user_id):
         """Get user by ID"""
-        conn = self.db_manager.get_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
         try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
             cursor.execute('''
                 SELECT id, email, first_name, last_name, subscription_plan, 
-                       subscription_status, subscription_expires, api_usage_count, 
-                       monthly_usage_limit, gmail_email, created_at, last_login, is_admin
-                FROM users WHERE id = %s AND is_active = TRUE
+                       subscription_status, created_at, last_login, is_active
+                FROM users WHERE id = %s
             ''', (user_id,))
-            
-            user_data = cursor.fetchone()
-            
-            if user_data:
-                return dict(user_data)
+            user = cursor.fetchone()
+            if user:
+                return {
+                    'id': user[0],
+                    'email': user[1],
+                    'first_name': user[2],
+                    'last_name': user[3],
+                    'subscription_plan': user[4],
+                    'subscription_status': user[5],
+                    'created_at': user[6],
+                    'last_login': user[7],
+                    'is_active': bool(user[8])
+                }
+            return None
+        except Exception as e:
+            print(f"❌ Error getting user by ID: {e}")
             return None
         finally:
-            conn.close()
-    
+            if 'conn' in locals():
+                conn.close()
+
+    def update_user(self, user_id, data):
+        """Update user details"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Build update query dynamically based on provided data
+            update_fields = []
+            params = []
+            for field in ['email', 'first_name', 'last_name', 'subscription_plan', 'is_active']:
+                if field in data:
+                    update_fields.append(f"{field} = %s")
+                    params.append(data[field])
+            
+            if not update_fields:
+                return False
+                
+            params.append(user_id)  # For WHERE clause
+            
+            query = f"UPDATE users SET {', '.join(update_fields)} WHERE id = %s"
+            cursor.execute(query, params)
+            conn.commit()
+            
+            return True
+        except Exception as e:
+            print(f"❌ Error updating user: {e}")
+            return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def delete_user(self, user_id):
+        """Delete a user"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Delete from related tables first
+            tables = [
+                'user_tokens',
+                'payment_records',
+                'usage_tracking',
+                'password_reset_tokens',
+                'processed_emails',
+                'user_vip_senders',
+                'user_email_filters',
+                'user_email_analysis'
+            ]
+            
+            for table in tables:
+                cursor.execute(f'DELETE FROM "{table}" WHERE user_id = %s', (user_id,))
+            
+            # Finally delete the user
+            cursor.execute('DELETE FROM users WHERE id = %s', (user_id,))
+            conn.commit()
+            
+            return True
+        except Exception as e:
+            print(f"❌ Error deleting user: {e}")
+            return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def search_users(self, query):
+        """Search users by email or name"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Search in email, first_name, and last_name
+            cursor.execute('''
+                SELECT id, email, first_name, last_name, subscription_plan, 
+                       subscription_status, created_at, last_login, is_active
+                FROM users 
+                WHERE email ILIKE %s OR first_name ILIKE %s OR last_name ILIKE %s
+                ORDER BY created_at DESC
+                LIMIT 50
+            ''', (f"%{query}%", f"%{query}%", f"%{query}%"))
+            
+            users = []
+            for row in cursor.fetchall():
+                users.append({
+                    'id': row[0],
+                    'email': row[1],
+                    'first_name': row[2],
+                    'last_name': row[3],
+                    'subscription_plan': row[4],
+                    'subscription_status': row[5],
+                    'created_at': row[6],
+                    'last_login': row[7],
+                    'is_active': bool(row[8])
+                })
+            return users
+        except Exception as e:
+            print(f"❌ Error searching users: {e}")
+            return []
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
     def get_gmail_token(self, user_id):
         """Get user's Gmail token"""
         conn = self.db_manager.get_connection()

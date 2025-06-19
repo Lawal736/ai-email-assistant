@@ -3785,6 +3785,50 @@ def admin_clear_cache():
         print(f"❌ Error clearing cache: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/users/<int:user_id>', methods=['GET', 'PUT', 'DELETE'])
+@admin_required
+def admin_user_manage(user_id):
+    """Manage a specific user (view/edit/delete)"""
+    try:
+        if request.method == 'GET':
+            user = user_model.get_user_by_id(user_id)
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            return jsonify(user)
+            
+        elif request.method == 'PUT':
+            data = request.get_json()
+            success = user_model.update_user(user_id, data)
+            if success:
+                return jsonify({'success': True})
+            return jsonify({'error': 'Failed to update user'}), 400
+            
+        elif request.method == 'DELETE':
+            success = user_model.delete_user(user_id)
+            if success:
+                return jsonify({'success': True})
+            return jsonify({'error': 'Failed to delete user'}), 400
+            
+    except Exception as e:
+        print(f"❌ Error managing user {user_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/users/search')
+@admin_required
+def admin_users_search():
+    """Search users by email or name"""
+    try:
+        query = request.args.get('q', '').strip()
+        if not query:
+            return jsonify({'error': 'Search query required'}), 400
+            
+        users = user_model.search_users(query)
+        return jsonify({'users': users})
+        
+    except Exception as e:
+        print(f"❌ Error searching users: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port) 
