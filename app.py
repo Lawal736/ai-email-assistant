@@ -238,6 +238,7 @@ def login():
             session['user_email'] = user['email']
             session['user_name'] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
             session['subscription_plan'] = user['subscription_plan']
+            session['is_admin'] = user.get('is_admin', False)
             
             if remember:
                 session.permanent = True

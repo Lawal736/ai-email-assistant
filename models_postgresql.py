@@ -272,7 +272,8 @@ class User:
         try:
             cursor.execute('''
                 SELECT id, email, password_hash, first_name, last_name, subscription_plan, 
-                       subscription_status, subscription_expires, api_usage_count, monthly_usage_limit
+                       subscription_status, subscription_expires, api_usage_count, monthly_usage_limit,
+                       is_admin
                 FROM users WHERE email = %s AND is_active = TRUE
             ''', (email,))
             
@@ -291,7 +292,8 @@ class User:
                     'subscription_status': user_data['subscription_status'],
                     'subscription_expires': user_data['subscription_expires'],
                     'api_usage_count': user_data['api_usage_count'],
-                    'monthly_usage_limit': user_data['monthly_usage_limit']
+                    'monthly_usage_limit': user_data['monthly_usage_limit'],
+                    'is_admin': user_data.get('is_admin', False)
                 }
             
             return None
@@ -307,7 +309,7 @@ class User:
             cursor.execute('''
                 SELECT id, email, first_name, last_name, subscription_plan, 
                        subscription_status, subscription_expires, api_usage_count, 
-                       monthly_usage_limit, gmail_email, created_at, last_login
+                       monthly_usage_limit, gmail_email, created_at, last_login, is_admin
                 FROM users WHERE id = %s AND is_active = TRUE
             ''', (user_id,))
             
