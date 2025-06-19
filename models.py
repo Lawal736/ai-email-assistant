@@ -50,7 +50,8 @@ class DatabaseManager:
                 monthly_usage_limit INTEGER DEFAULT 100,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_login DATETIME,
-                is_active BOOLEAN DEFAULT 1
+                is_active BOOLEAN DEFAULT 1,
+                is_admin BOOLEAN DEFAULT 0
             )
         ''')
         
@@ -85,6 +86,56 @@ class DatabaseManager:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
+        ''')
+        
+        # Create activity_log table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                action TEXT NOT NULL,
+                details TEXT,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create index for activity log
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_activity_log_user 
+            ON activity_log(user_id)
+        ''')
+        
+        # Create index for activity log timestamp
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_activity_log_timestamp 
+            ON activity_log(timestamp DESC)
+        ''')
+        
+        # Create email_processing_log table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS email_processing_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                email_id TEXT NOT NULL,
+                processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'success',
+                error TEXT,
+                processing_time REAL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create index for email processing log
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_email_processing_log_user 
+            ON email_processing_log(user_id)
+        ''')
+        
+        # Create index for email processing log date
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_email_processing_log_date 
+            ON email_processing_log(processed_at DESC)
         ''')
         
         # Create password_reset_tokens table
@@ -191,6 +242,13 @@ class DatabaseManager:
              ('pro', 19.99, 199.99, 500, 'Everything in Free plus Advanced AI analysis, Document processing, Priority support, Custom insights, Email limit: 500/month', NULL, NULL),
              ('enterprise', 49.99, 499.99, 2000, 'Everything in Pro plus Unlimited AI-powered analysis, Team collaboration, API access, Custom integrations, Email limit: 2,000/month', NULL, NULL)
           ''')
+        
+        # Add is_admin column if it doesn't exist (migration)
+        try:
+            cursor.execute('ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0')
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
         
         # Create user_email_analysis table for caching AI analysis results
         cursor.execute('''
@@ -1245,6 +1303,10 @@ class User:
         conn.close()
         return count
 
+    def get_total_users(self):
+        """Get total number of users in the database (alias for count_users)"""
+        return self.count_users()
+
     def get_users_paginated(self, offset=0, limit=20):
         """Return paginated list of users"""
         conn = self.db_manager.get_connection()
@@ -1473,6 +1535,147 @@ class User:
             return False
         finally:
             conn.close()
+
+    def get_active_subscriptions_count(self):
+        """Get count of active subscriptions"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM users 
+                WHERE subscription_status = 'active' 
+                AND subscription_plan != 'free'
+                AND is_active = 1
+            """)
+            count = cursor.fetchone()[0]
+            return count
+        except Exception as e:
+            print(f"❌ Error getting active subscriptions count: {e}")
+            return 0
+        finally:
+            if 'conn' in locals():
+                conn.close()
+            
+    def get_emails_processed_count(self, date):
+        """Get count of emails processed on a specific date"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM email_processing_log 
+                WHERE DATE(processed_at) = ?
+            """, (date.strftime('%Y-%m-%d'),))
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count
+        except Exception as e:
+            print(f"❌ Error getting emails processed count: {e}")
+            return 0
+            
+    def get_recent_activity(self, limit=10):
+        """Get recent user activity"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    a.timestamp,
+                    u.email as user_email,
+                    a.action,
+                    a.details
+                FROM activity_log a
+                LEFT JOIN users u ON a.user_id = u.id
+                WHERE u.is_active = 1
+                ORDER BY a.timestamp DESC
+                LIMIT ?
+            """, (limit,))
+            
+            activities = []
+            for row in cursor.fetchall():
+                activities.append({
+                    'timestamp': row[0],
+                    'user': row[1] or 'Unknown',
+                    'action': row[2],
+                    'details': row[3]
+                })
+            return activities
+        except Exception as e:
+            print(f"❌ Error getting recent activity: {e}")
+            return []
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def get_table_stats(self):
+        """Get database table statistics"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Get list of tables - works for both SQLite and PostgreSQL
+            if isinstance(self.db_manager, DatabaseManager):  # SQLite
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            else:  # PostgreSQL
+                cursor.execute("""
+                    SELECT tablename 
+                    FROM pg_catalog.pg_tables 
+                    WHERE schemaname != 'pg_catalog' 
+                    AND schemaname != 'information_schema'
+                """)
+            
+            tables = cursor.fetchall()
+            
+            stats = {}
+            for table in tables:
+                table_name = table[0]
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                row_count = cursor.fetchone()[0]
+                stats[table_name] = {
+                    'row_count': row_count
+                }
+            
+            return stats
+        except Exception as e:
+            print(f"❌ Error getting table stats: {e}")
+            return {}
+        finally:
+            if 'conn' in locals():
+                conn.close()
+            
+    def get_database_stats(self):
+        """Get overall database statistics"""
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            # Get database size
+            cursor.execute("PRAGMA page_count")
+            page_count = cursor.fetchone()[0]
+            cursor.execute("PRAGMA page_size")
+            page_size = cursor.fetchone()[0]
+            db_size = page_count * page_size
+            
+            # Format size
+            if db_size > 1024 * 1024 * 1024:
+                size_formatted = f"{db_size / (1024 * 1024 * 1024):.2f} GB"
+            elif db_size > 1024 * 1024:
+                size_formatted = f"{db_size / (1024 * 1024):.2f} MB"
+            else:
+                size_formatted = f"{db_size / 1024:.2f} KB"
+                
+            stats = {
+                'size': db_size,
+                'size_formatted': size_formatted,
+                'tables': self.get_table_stats()
+            }
+            
+            conn.close()
+            return stats
+        except Exception as e:
+            print(f"❌ Error getting database stats: {e}")
+            return {}
 
 class SubscriptionPlan:
     """Subscription plan model"""

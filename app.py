@@ -3440,9 +3440,8 @@ def admin_user_count():
     return jsonify({'user_count': count})
 
 @app.route('/admin/users')
-@app.route('/admin/users/list')
 @admin_required
-def admin_users_list():
+def admin_users_view():
     """User management interface"""
     try:
         page = request.args.get('page', 1, type=int)
@@ -3647,13 +3646,13 @@ def analyze_emails():
 def admin_dashboard():
     """Admin dashboard"""
     try:
-        # Get database stats using user_model instead of db_manager
-        total_users = user_model.get_total_users()
-        active_subscriptions = user_model.get_active_subscriptions_count()
-        recent_activity = user_model.get_recent_activity(limit=10)
+        # Get database stats using user_model
+        total_users = user_model.count_users() if user_model else 0
+        active_subscriptions = user_model.get_active_subscriptions_count() if user_model else 0
+        recent_activity = user_model.get_recent_activity(limit=10) if user_model else []
         
         # Get table stats from user_model
-        table_stats = user_model.get_table_stats()
+        table_stats = user_model.get_table_stats() if user_model else {}
         
         return render_template(
             'admin/dashboard.html',
