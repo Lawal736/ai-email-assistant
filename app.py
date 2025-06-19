@@ -215,7 +215,9 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if not session.get('is_admin'):
             flash('You must be an admin to access this page.', 'error')
-            return redirect(url_for('dashboard'))
+            return render_template('error.html', 
+                                error_title='Access Denied',
+                                error_message='You must be an admin to access this page. If you believe this is an error, please try logging out and logging back in.'), 403
         return f(*args, **kwargs)
     return decorated_function
 
