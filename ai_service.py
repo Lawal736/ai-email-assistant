@@ -299,17 +299,6 @@ class HybridAIService:
         # Calculate complexity
         complexity = self._calculate_complexity(email_content)
         
-        # Determine which model to use
-        if complexity['is_complex'] and self.use_sonnet_for_complex:
-            model = self.models['claude_sonnet']
-            model_name = 'claude_sonnet'
-        elif not complexity['is_complex'] and self.use_haiku_for_simple:
-            model = self.models['claude_haiku']
-            model_name = 'claude_haiku'
-        else:
-            model = self.models['claude_sonnet']
-            model_name = 'claude_sonnet'
-        
         # Prepare messages based on analysis type
         if analysis_type == "summary":
             system_prompt = """You are an AI email assistant. Analyze the email and provide a concise summary with key points, action items, and recommendations. Focus on the most important information."""
@@ -344,39 +333,83 @@ Provide a comprehensive analysis in this exact format:
         else:
             system_prompt = """You are an AI email assistant. Analyze the email and provide insights."""
         
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Please analyze this email:\n\n{email_content}"}
-        ]
+        user_content = f"Please analyze this email:\n\n{email_content}"
         
-        try:
-            # Try Claude first
-            response = self._call_claude_api(model, messages)
-            content = self._extract_response_content(response, 'claude')
-            print(f"✅ {analysis_type} generated using {model_name}")
-            return {
-                "content": content,
-                "model_used": model_name,
-                "complexity": complexity
-            }
-        except Exception as e:
-            print(f"❌ Claude API failed for {analysis_type}: {str(e)}")
-            
-            if self.fallback_to_openai:
-                try:
+        # Try providers in order of preference using the hybrid selection
+        for provider in self.provider_priority:
+            try:
+                if provider == 'deepseek' and self.enable_deepseek:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, analysis_type)
+                    if provider_name == 'deepseek':
+                        messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                        ]
+                        response = self._call_deepseek_api(model_id, messages)
+                        content = self._extract_response_content(response, 'deepseek')
+                        print(f"✅ {analysis_type} generated using {model_name}")
+                        return {
+                            "content": content,
+                            "model_used": model_name,
+                            "complexity": complexity,
+                            "provider": "deepseek"
+                        }
+                
+                elif provider == 'gemini' and self.enable_gemini:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, analysis_type)
+                    if provider_name == 'gemini':
+                        messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                        ]
+                        response = self._call_gemini_api(model_id, messages)
+                        content = self._extract_response_content(response, 'gemini')
+                        print(f"✅ {analysis_type} generated using {model_name}")
+                        return {
+                            "content": content,
+                            "model_used": model_name,
+                            "complexity": complexity,
+                            "provider": "gemini"
+                        }
+                
+                elif provider == 'claude' and self.anthropic_api_key:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, analysis_type)
+                    if provider_name == 'claude':
+                        messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                        ]
+                        response = self._call_claude_api(model_id, messages)
+                        content = self._extract_response_content(response, 'claude')
+                        print(f"✅ {analysis_type} generated using {model_name}")
+                        return {
+                            "content": content,
+                            "model_used": model_name,
+                            "complexity": complexity,
+                            "provider": "claude"
+                        }
+                
+                elif provider == 'openai' and self.openai_api_key:
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ]
                     response = self._call_openai_api(messages)
                     content = self._extract_response_content(response, 'openai')
                     print(f"✅ {analysis_type} generated using OpenAI fallback")
                     return {
                         "content": content,
                         "model_used": "openai_fallback",
-                        "complexity": complexity
+                        "complexity": complexity,
+                        "provider": "openai"
                     }
-                except Exception as fallback_error:
-                    print(f"❌ OpenAI fallback also failed: {str(fallback_error)}")
-                    raise Exception(f"All AI services failed for {analysis_type}: {str(e)}")
-            else:
-                raise e
+                    
+            except Exception as e:
+                print(f"❌ {provider.capitalize()} API failed for {analysis_type}: {str(e)}")
+                continue
+        
+        # If all providers fail
+        raise Exception(f"All AI providers failed for {analysis_type}. Please check your API keys and network connection.")
 
     def generate_email_summary(self, email_content: str, subject: str = "", sender: str = "") -> Dict:
         """
@@ -452,14 +485,6 @@ Provide a comprehensive analysis in this exact format:
         total_complexity = sum(self._calculate_complexity(email.get('content', ''))['score'] for email in emails)
         avg_complexity = total_complexity / len(emails) if emails else 0
         
-        # Use Sonnet for complex summaries, Haiku for simple ones
-        if avg_complexity > self.complexity_threshold or len(emails) > 10:
-            model = self.models['claude_sonnet']
-            model_name = 'claude_sonnet'
-        else:
-            model = self.models['claude_haiku']
-            model_name = 'claude_haiku'
-        
         system_prompt = """You are an AI email assistant. Create a comprehensive daily summary of the emails provided. Include:
 1. Key themes and topics
 2. Important action items
@@ -473,30 +498,69 @@ Format the summary in a clear, structured way."""
         
         user_content = f"Please analyze these {len(emails)} emails and provide a daily summary:\n\n" + "\n\n---\n\n".join(email_summaries)
         
+        # Create a complexity dict for provider selection
+        complexity = {
+            'is_complex': avg_complexity > self.complexity_threshold or len(emails) > 10,
+            'score': avg_complexity
+        }
+        
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
         ]
         
-        try:
-            response = self._call_claude_api(model, messages, max_tokens=3000)
-            content = self._extract_response_content(response, 'claude')
-            
-            return {
-                "success": True,
-                "content": content,
-                "model_used": model_name,
-                "email_count": len(emails),
-                "avg_complexity": avg_complexity,
-                "provider": "claude"
-            }
-            
-        except Exception as claude_error:
-            if self.fallback_to_openai:
-                try:
+        # Try providers in order of preference using the hybrid selection
+        for provider in self.provider_priority:
+            try:
+                if provider == 'deepseek' and self.enable_deepseek:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, "summary")
+                    if provider_name == 'deepseek':
+                        response = self._call_deepseek_api(model_id, messages, max_tokens=3000)
+                        content = self._extract_response_content(response, 'deepseek')
+                        print(f"✅ daily summary generated using {model_name}")
+                        return {
+                            "success": True,
+                            "content": content,
+                            "model_used": model_name,
+                            "email_count": len(emails),
+                            "avg_complexity": avg_complexity,
+                            "provider": "deepseek"
+                        }
+                
+                elif provider == 'gemini' and self.enable_gemini:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, "summary")
+                    if provider_name == 'gemini':
+                        response = self._call_gemini_api(model_id, messages, max_tokens=3000)
+                        content = self._extract_response_content(response, 'gemini')
+                        print(f"✅ daily summary generated using {model_name}")
+                        return {
+                            "success": True,
+                            "content": content,
+                            "model_used": model_name,
+                            "email_count": len(emails),
+                            "avg_complexity": avg_complexity,
+                            "provider": "gemini"
+                        }
+                
+                elif provider == 'claude' and self.anthropic_api_key:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, "summary")
+                    if provider_name == 'claude':
+                        response = self._call_claude_api(model_id, messages, max_tokens=3000)
+                        content = self._extract_response_content(response, 'claude')
+                        print(f"✅ daily summary generated using {model_name}")
+                        return {
+                            "success": True,
+                            "content": content,
+                            "model_used": model_name,
+                            "email_count": len(emails),
+                            "avg_complexity": avg_complexity,
+                            "provider": "claude"
+                        }
+                
+                elif provider == 'openai' and self.openai_api_key:
                     response = self._call_openai_api(messages, max_tokens=2000)
                     content = self._extract_response_content(response, 'openai')
-                    
+                    print(f"✅ daily summary generated using OpenAI fallback")
                     return {
                         "success": True,
                         "content": content,
@@ -506,18 +570,17 @@ Format the summary in a clear, structured way."""
                         "provider": "openai",
                         "fallback_used": True
                     }
-                except Exception as openai_error:
-                    return {
-                        "success": False,
-                        "error": f"Both APIs failed. Claude: {claude_error}, OpenAI: {openai_error}",
-                        "email_count": len(emails)
-                    }
-            else:
-                return {
-                    "success": False,
-                    "error": f"Claude API failed: {claude_error}",
-                    "email_count": len(emails)
-                }
+                    
+            except Exception as e:
+                print(f"❌ {provider.capitalize()} API failed for daily summary: {str(e)}")
+                continue
+        
+        # If all providers fail
+        return {
+            "success": False,
+            "error": "All AI providers failed for daily summary. Please check your API keys and network connection.",
+            "email_count": len(emails)
+        }
 
     def analyze_text(self, prompt: str, max_tokens: int = 1500) -> str:
         """
