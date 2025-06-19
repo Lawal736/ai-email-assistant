@@ -213,7 +213,12 @@ def subscription_required(plan_name='free'):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('is_admin'):
+        is_admin = session.get('is_admin', False)
+        user_email = session.get('user_email', 'Unknown')
+        print(f"🔒 Admin check - User: {user_email}, Is Admin: {is_admin}")
+        
+        if not is_admin:
+            print(f"❌ Admin access denied - User: {user_email}")
             flash('You must be an admin to access this page.', 'error')
             return render_template('error.html', 
                                 error_title='Access Denied',
@@ -241,12 +246,19 @@ def login():
             session['user_email'] = user['email']
             session['user_name'] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
             session['subscription_plan'] = user['subscription_plan']
-            session['is_admin'] = user.get('is_admin', False)
+            session['is_admin'] = bool(user.get('is_admin', False))  # Ensure boolean value
+            
+            # Debug logging for admin status
+            print(f"🔐 User login - Email: {email}, Admin: {session['is_admin']}")
             
             if remember:
                 session.permanent = True
             
             flash(f'Welcome back, {session["user_name"] or user["email"]}!', 'success')
+            
+            # If admin, redirect to admin dashboard
+            if session['is_admin']:
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid email or password', 'error')
