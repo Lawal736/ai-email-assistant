@@ -2,6 +2,10 @@
 
 {% block title %}Admin Users - AI Email Assistant{% endblock %}
 
+{% block extra_head %}
+<script src="{{ url_for('static', filename='js/admin-users.js') }}" defer></script>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
     <div class="row mb-4">
