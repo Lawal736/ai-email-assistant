@@ -401,4 +401,6 @@ See `env_example.txt` for all required variables.
 ### Notes
 - All GCP-specific scripts and configs have been removed.
 - For local development, you can use Docker Compose or run with Python directly.
-- For production, use Digital Ocean App Platform with the provided Dockerfile. 
+- For production, use Digital Ocean App Platform with the provided Dockerfile.
+
+<!-- Last updated: 2025-06-19 20:50 UTC - PostgreSQL models restored --> 
