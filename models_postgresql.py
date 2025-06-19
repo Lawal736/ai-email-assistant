@@ -1404,4 +1404,298 @@ class PaymentRecord:
                 }
             return None
         finally:
-            conn.close() 
+            conn.close()
+
+    def get_database_stats(self):
+        """Get database statistics"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get database size
+                    cur.execute("""
+                        SELECT pg_size_pretty(pg_database_size(current_database())) as size,
+                               pg_database_size(current_database()) as size_bytes
+                    """)
+                    size_data = cur.fetchone()
+                    
+                    # Get table counts
+                    cur.execute("""
+                        SELECT COUNT(*) as table_count 
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'public'
+                    """)
+                    table_count = cur.fetchone()[0]
+                    
+                    return {
+                        'size_formatted': size_data[0],
+                        'size_bytes': size_data[1],
+                        'table_count': table_count
+                    }
+        except Exception as e:
+            print(f"❌ Error getting database stats: {e}")
+            return {}
+            
+    def get_table_stats(self):
+        """Get statistics for each table"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 
+                            relname as table_name,
+                            n_live_tup as row_count,
+                            pg_size_pretty(pg_total_relation_size(quote_ident(relname))) as size
+                        FROM pg_stat_user_tables
+                        ORDER BY n_live_tup DESC
+                    """)
+                    return cur.fetchall()
+        except Exception as e:
+            print(f"❌ Error getting table stats: {e}")
+            return []
+            
+    def get_total_users(self):
+        """Get total number of users"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM users")
+                    return cur.fetchone()[0]
+        except Exception as e:
+            print(f"❌ Error getting total users: {e}")
+            return 0
+            
+    def get_active_subscriptions_count(self):
+        """Get count of active subscriptions"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT COUNT(*) 
+                        FROM users 
+                        WHERE subscription_status = 'active'
+                    """)
+                    return cur.fetchone()[0]
+        except Exception as e:
+            print(f"❌ Error getting active subscriptions count: {e}")
+            return 0
+            
+    def get_emails_processed_count(self, date):
+        """Get count of emails processed on a specific date"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT COUNT(*) 
+                        FROM email_processing_log 
+                        WHERE DATE(processed_at) = %s
+                    """, (date,))
+                    return cur.fetchone()[0]
+        except Exception as e:
+            print(f"❌ Error getting emails processed count: {e}")
+            return 0
+            
+    def get_recent_activity(self, limit=10):
+        """Get recent user activity"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 
+                            a.timestamp,
+                            u.email as user_email,
+                            a.action,
+                            a.details
+                        FROM activity_log a
+                        LEFT JOIN users u ON a.user_id = u.id
+                        ORDER BY a.timestamp DESC
+                        LIMIT %s
+                    """, (limit,))
+                    
+                    activities = []
+                    for row in cur.fetchall():
+                        activities.append({
+                            'timestamp': row[0],
+                            'user': row[1],
+                            'action': row[2],
+                            'details': row[3]
+                        })
+                    return activities
+        except Exception as e:
+            print(f"❌ Error getting recent activity: {e}")
+            return []
+            
+    def get_users_paginated(self, page=1, search='', per_page=50):
+        """Get paginated list of users with optional search"""
+        try:
+            offset = (page - 1) * per_page
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    if search:
+                        cur.execute("""
+                            SELECT 
+                                id, email, subscription_plan, subscription_status,
+                                created_at, last_login
+                            FROM users
+                            WHERE email ILIKE %s OR first_name ILIKE %s OR last_name ILIKE %s
+                            ORDER BY created_at DESC
+                            LIMIT %s OFFSET %s
+                        """, (f'%{search}%', f'%{search}%', f'%{search}%', per_page, offset))
+                    else:
+                        cur.execute("""
+                            SELECT 
+                                id, email, subscription_plan, subscription_status,
+                                created_at, last_login
+                            FROM users
+                            ORDER BY created_at DESC
+                            LIMIT %s OFFSET %s
+                        """, (per_page, offset))
+                    
+                    users = []
+                    for row in cur.fetchall():
+                        users.append({
+                            'id': row[0],
+                            'email': row[1],
+                            'subscription_plan': row[2],
+                            'subscription_status': row[3],
+                            'created_at': row[4],
+                            'last_login': row[5]
+                        })
+                    return users
+        except Exception as e:
+            print(f"❌ Error getting paginated users: {e}")
+            return []
+            
+    def get_subscription_history(self, user_id):
+        """Get user's subscription history"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 
+                            plan_name,
+                            status,
+                            started_at,
+                            ended_at,
+                            payment_method
+                        FROM subscription_history
+                        WHERE user_id = %s
+                        ORDER BY started_at DESC
+                    """, (user_id,))
+                    
+                    history = []
+                    for row in cur.fetchall():
+                        history.append({
+                            'plan': row[0],
+                            'status': row[1],
+                            'started_at': row[2],
+                            'ended_at': row[3],
+                            'payment_method': row[4]
+                        })
+                    return history
+        except Exception as e:
+            print(f"❌ Error getting subscription history: {e}")
+            return []
+            
+    def get_payment_history(self, user_id):
+        """Get user's payment history"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 
+                            amount,
+                            currency,
+                            status,
+                            payment_method,
+                            created_at,
+                            reference
+                        FROM payments
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                    """, (user_id,))
+                    
+                    history = []
+                    for row in cur.fetchall():
+                        history.append({
+                            'amount': row[0],
+                            'currency': row[1],
+                            'status': row[2],
+                            'payment_method': row[3],
+                            'date': row[4],
+                            'reference': row[5]
+                        })
+                    return history
+        except Exception as e:
+            print(f"❌ Error getting payment history: {e}")
+            return []
+            
+    def get_user_email_stats(self, user_id):
+        """Get user's email processing statistics"""
+        try:
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 
+                            COUNT(*) as total_processed,
+                            COUNT(CASE WHEN DATE(processed_at) = CURRENT_DATE THEN 1 END) as processed_today,
+                            MAX(processed_at) as last_processed
+                        FROM email_processing_log
+                        WHERE user_id = %s
+                    """, (user_id,))
+                    
+                    row = cur.fetchone()
+                    return {
+                        'total_processed': row[0],
+                        'processed_today': row[1],
+                        'last_processed': row[2]
+                    }
+        except Exception as e:
+            print(f"❌ Error getting user email stats: {e}")
+            return {
+                'total_processed': 0,
+                'processed_today': 0,
+                'last_processed': None
+            }
+            
+    def get_logs_paginated(self, page=1, log_type='all', per_page=100):
+        """Get paginated application logs"""
+        try:
+            offset = (page - 1) * per_page
+            with self.get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    if log_type != 'all':
+                        cur.execute("""
+                            SELECT 
+                                timestamp,
+                                level,
+                                message,
+                                details
+                            FROM application_logs
+                            WHERE level = %s
+                            ORDER BY timestamp DESC
+                            LIMIT %s OFFSET %s
+                        """, (log_type, per_page, offset))
+                    else:
+                        cur.execute("""
+                            SELECT 
+                                timestamp,
+                                level,
+                                message,
+                                details
+                            FROM application_logs
+                            ORDER BY timestamp DESC
+                            LIMIT %s OFFSET %s
+                        """, (per_page, offset))
+                    
+                    logs = []
+                    for row in cur.fetchall():
+                        logs.append({
+                            'timestamp': row[0],
+                            'level': row[1],
+                            'message': row[2],
+                            'details': row[3]
+                        })
+                    return logs
+        except Exception as e:
+            print(f"❌ Error getting paginated logs: {e}")
+            return [] 

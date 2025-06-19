@@ -3641,6 +3641,164 @@ def analyze_emails():
     # Example: you could call ai_service.extract_action_items(emails)
     return jsonify({'action_items': action_items, 'recommendations': recommendations})
 
+# Admin Dashboard Routes
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard with overview stats"""
+    try:
+        # Get database stats
+        db_stats = user_model.get_database_stats()
+        
+        # Get user stats
+        total_users = user_model.get_total_users()
+        active_subscriptions = user_model.get_active_subscriptions_count()
+        
+        # Get today's email stats
+        today = datetime.now().date()
+        emails_today = user_model.get_emails_processed_count(today)
+        
+        # Get recent activity
+        recent_activity = user_model.get_recent_activity(limit=10)
+        
+        stats = {
+            'total_users': total_users,
+            'active_subscriptions': active_subscriptions,
+            'emails_today': emails_today,
+            'db_size': db_stats.get('size_formatted', 'N/A')
+        }
+        
+        return render_template('admin/dashboard.html', 
+                             stats=stats,
+                             recent_activity=recent_activity)
+    except Exception as e:
+        print(f"❌ Error in admin dashboard: {str(e)}")
+        flash('Error loading admin dashboard', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/admin/refresh-stats')
+@admin_required
+def admin_refresh_stats():
+    """Refresh admin dashboard stats via AJAX"""
+    try:
+        db_stats = user_model.get_database_stats()
+        total_users = user_model.get_total_users()
+        active_subscriptions = user_model.get_active_subscriptions_count()
+        emails_today = user_model.get_emails_processed_count(datetime.now().date())
+        
+        return jsonify({
+            'total_users': total_users,
+            'active_subscriptions': active_subscriptions,
+            'emails_today': emails_today,
+            'db_size': db_stats.get('size_formatted', 'N/A')
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/database')
+@admin_required
+def admin_database():
+    """Database management interface"""
+    try:
+        # Get database stats
+        db_stats = user_model.get_database_stats()
+        
+        # Get table sizes
+        table_stats = user_model.get_table_stats()
+        
+        return render_template('admin/database.html',
+                             db_stats=db_stats,
+                             table_stats=table_stats)
+    except Exception as e:
+        flash(f'Error loading database stats: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/users')
+@admin_required
+def admin_users_list():
+    """User management interface"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '')
+        
+        users = user_model.get_users_paginated(page=page, 
+                                             search=search,
+                                             per_page=50)
+        
+        return render_template('admin/users.html',
+                             users=users,
+                             search=search,
+                             page=page)
+    except Exception as e:
+        flash(f'Error loading users: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/user/<int:user_id>')
+@admin_required
+def admin_user_details(user_id):
+    """User details and management"""
+    try:
+        user = user_model.get_user_by_id(user_id)
+        if not user:
+            flash('User not found', 'error')
+            return redirect(url_for('admin_users_list'))
+            
+        # Get user's subscription history
+        subscription_history = user_model.get_subscription_history(user_id)
+        
+        # Get user's payment history
+        payment_history = user_model.get_payment_history(user_id)
+        
+        # Get user's email stats
+        email_stats = user_model.get_user_email_stats(user_id)
+        
+        return render_template('admin/user_details.html',
+                             user=user,
+                             subscription_history=subscription_history,
+                             payment_history=payment_history,
+                             email_stats=email_stats)
+    except Exception as e:
+        flash(f'Error loading user details: {str(e)}', 'error')
+        return redirect(url_for('admin_users_list'))
+
+@app.route('/admin/user/<int:user_id>/edit', methods=['POST'])
+@admin_required
+def admin_user_edit(user_id):
+    """Edit user details"""
+    try:
+        data = request.get_json()
+        
+        # Update user details
+        success = user_model.update_user(user_id, data)
+        
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to update user'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/logs')
+@admin_required
+def admin_logs():
+    """View application logs"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        log_type = request.args.get('type', 'all')
+        
+        logs = user_model.get_logs_paginated(page=page,
+                                           log_type=log_type,
+                                           per_page=100)
+        
+        return render_template('admin/logs.html',
+                             logs=logs,
+                             log_type=log_type,
+                             page=page)
+    except Exception as e:
+        flash(f'Error loading logs: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port) 
