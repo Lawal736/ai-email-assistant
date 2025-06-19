@@ -313,20 +313,20 @@ This application supports multiple AI providers for intelligent email analysis a
 
 ### Supported Providers
 
-1. **Anthropic Claude** (Primary)
-   - Models: Claude 3.5 Sonnet, Claude 3 Haiku
-   - Best for: Complex analysis, nuanced understanding
-   - Environment variable: `ANTHROPIC_API_KEY`
-
-2. **DeepSeek** (New!)
+1. **DeepSeek** (Primary)
    - Models: DeepSeek Chat, DeepSeek Coder
-   - Best for: Technical emails, coding-related content
+   - Best for: Technical emails, coding-related content, cost-effective analysis
    - Environment variable: `DEEPSEEK_API_KEY`
 
-3. **Google Gemini** (New!)
+2. **Google Gemini** (Secondary)
    - Models: Gemini 1.5 Pro, Gemini 1.5 Flash
-   - Best for: Fast processing, cost-effective analysis
+   - Best for: Fast processing, cost-effective analysis, business emails
    - Environment variable: `GEMINI_API_KEY`
+
+3. **Anthropic Claude** (Tertiary)
+   - Models: Claude 3.5 Sonnet, Claude 3 Haiku
+   - Best for: Complex analysis, nuanced understanding, high-quality responses
+   - Environment variable: `ANTHROPIC_API_KEY`
 
 4. **OpenAI GPT** (Fallback)
    - Models: GPT-3.5 Turbo
@@ -336,9 +336,9 @@ This application supports multiple AI providers for intelligent email analysis a
 ### Setup Instructions
 
 1. **Get API Keys:**
-   - [Anthropic Claude](https://console.anthropic.com/)
    - [DeepSeek](https://platform.deepseek.com/)
    - [Google Gemini](https://makersuite.google.com/app/apikey)
+   - [Anthropic Claude](https://console.anthropic.com/)
    - [OpenAI](https://platform.openai.com/api-keys)
 
 2. **Configure Environment Variables:**
@@ -347,17 +347,17 @@ This application supports multiple AI providers for intelligent email analysis a
    cp env_example.txt .env
    
    # Edit .env and add your API keys
-   ANTHROPIC_API_KEY=your_anthropic_key
    DEEPSEEK_API_KEY=your_deepseek_key
    GEMINI_API_KEY=your_gemini_key
+   ANTHROPIC_API_KEY=your_anthropic_key
    OPENAI_API_KEY=your_openai_key
    ```
 
 3. **Provider Selection Logic:**
-   - **Complex emails**: Claude Sonnet → DeepSeek Chat → Gemini Pro
-   - **Simple emails**: Claude Haiku → Gemini Flash → DeepSeek Chat
+   - **Complex emails**: DeepSeek Chat → Gemini Pro → Claude Sonnet
+   - **Simple emails**: DeepSeek Chat → Gemini Flash → Claude Haiku
    - **Coding tasks**: DeepSeek Coder (automatically selected)
-   - **Fallback**: Automatic fallback to available providers
+   - **Fallback**: Automatic fallback to available providers in priority order
 
 ### Benefits of Multiple Providers
 

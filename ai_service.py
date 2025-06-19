@@ -86,7 +86,7 @@ class HybridAIService:
         self.enable_gemini = bool(self.gemini_api_key)
         
         # Provider priority (for fallback)
-        self.provider_priority = ['claude', 'deepseek', 'gemini', 'openai']
+        self.provider_priority = ['deepseek', 'gemini', 'claude', 'openai']
         
     def _calculate_complexity(self, email_content: str) -> Dict:
         """
@@ -614,34 +614,34 @@ Format the summary in a clear, structured way."""
             return ('deepseek', 'deepseek_coder', self.models['deepseek_coder'])
         
         if is_complex:
-            # Complex tasks: prefer Claude Sonnet, then DeepSeek Chat, then Gemini Pro
-            if self.anthropic_api_key:
-                return ('claude', 'claude_sonnet', self.models['claude_sonnet'])
-            elif self.enable_deepseek:
+            # Complex tasks: prefer DeepSeek Chat, then Gemini Pro, then Claude Sonnet
+            if self.enable_deepseek:
                 return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
             elif self.enable_gemini:
                 return ('gemini', 'gemini_pro', self.models['gemini_pro'])
+            elif self.anthropic_api_key:
+                return ('claude', 'claude_sonnet', self.models['claude_sonnet'])
             elif self.openai_api_key:
                 return ('openai', 'gpt_fallback', self.models['gpt_fallback'])
         else:
-            # Simple tasks: prefer Claude Haiku, then Gemini Flash, then DeepSeek Chat
-            if self.anthropic_api_key:
-                return ('claude', 'claude_haiku', self.models['claude_haiku'])
+            # Simple tasks: prefer DeepSeek Chat, then Gemini Flash, then Claude Haiku
+            if self.enable_deepseek:
+                return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
             elif self.enable_gemini:
                 return ('gemini', 'gemini_flash', self.models['gemini_flash'])
-            elif self.enable_deepseek:
-                return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
+            elif self.anthropic_api_key:
+                return ('claude', 'claude_haiku', self.models['claude_haiku'])
             elif self.openai_api_key:
                 return ('openai', 'gpt_fallback', self.models['gpt_fallback'])
         
         # Fallback to any available provider
         for provider in self.provider_priority:
-            if provider == 'claude' and self.anthropic_api_key:
-                return ('claude', 'claude_sonnet', self.models['claude_sonnet'])
-            elif provider == 'deepseek' and self.enable_deepseek:
+            if provider == 'deepseek' and self.enable_deepseek:
                 return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
             elif provider == 'gemini' and self.enable_gemini:
                 return ('gemini', 'gemini_pro', self.models['gemini_pro'])
+            elif provider == 'claude' and self.anthropic_api_key:
+                return ('claude', 'claude_sonnet', self.models['claude_sonnet'])
             elif provider == 'openai' and self.openai_api_key:
                 return ('openai', 'gpt_fallback', self.models['gpt_fallback'])
         
