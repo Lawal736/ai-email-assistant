@@ -102,7 +102,7 @@
                                 <div class="card-body text-center">
                                     <h5 class="card-title text-capitalize">{{ plan.name }}</h5>
                                     <h3 class="text-primary">
-                                        {{ plan.currency_symbol }}{{ plan.price_monthly|int if plan.price_monthly == plan.price_monthly|int else plan.price_monthly }}
+                                        {{ plan.currency_symbol }}{{ plan.price_monthly|thousands }}
                                         <small class="text-muted">/month</small>
                                     </h3>
                                     {% if plan.currency != 'USD' %}
