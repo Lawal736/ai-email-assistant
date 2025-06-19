@@ -364,66 +364,64 @@ Provide a comprehensive analysis in this exact format:
             system_prompt = """You are an AI email assistant. Analyze the email and provide insights."""
         
         user_content = f"Please analyze this email:\n\n{email_content}"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
         
-        # Try providers in order of preference using the hybrid selection
+        # Try providers in order of preference
+        print(f"🔍 [DEBUG] Provider priority: {self.provider_priority}")
+        print(f"🔍 [DEBUG] Enabled providers - DeepSeek: {self.enable_deepseek}, Gemini: {self.enable_gemini}, Claude: {bool(self.anthropic_api_key)}, OpenAI: {bool(self.openai_api_key)}")
+        
         for provider in self.provider_priority:
+            print(f"🔍 [DEBUG] Trying provider: {provider}")
             try:
                 if provider == 'deepseek' and self.enable_deepseek:
-                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, analysis_type)
-                    if provider_name == 'deepseek':
-                        messages = [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content}
-                        ]
-                        response = self._call_deepseek_api(model_id, messages)
-                        content = self._extract_response_content(response, 'deepseek')
-                        print(f"✅ {analysis_type} generated using {model_name}")
-                        return {
-                            "content": content,
-                            "model_used": model_name,
-                            "complexity": complexity,
-                            "provider": "deepseek"
-                        }
+                    print(f"🔍 [DEBUG] DeepSeek enabled, attempting call...")
+                    # Use DeepSeek Chat for all tasks
+                    model_id = self.models['deepseek_chat']
+                    response = self._call_deepseek_api(model_id, messages)
+                    content = self._extract_response_content(response, 'deepseek')
+                    print(f"✅ {analysis_type} generated using deepseek_chat")
+                    return {
+                        "content": content,
+                        "model_used": "deepseek_chat",
+                        "complexity": complexity,
+                        "provider": "deepseek"
+                    }
                 
                 elif provider == 'gemini' and self.enable_gemini:
-                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, analysis_type)
-                    if provider_name == 'gemini':
-                        messages = [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content}
-                        ]
-                        response = self._call_gemini_api(model_id, messages)
-                        content = self._extract_response_content(response, 'gemini')
-                        print(f"✅ {analysis_type} generated using {model_name}")
-                        return {
-                            "content": content,
-                            "model_used": model_name,
-                            "complexity": complexity,
-                            "provider": "gemini"
-                        }
+                    print(f"🔍 [DEBUG] Gemini enabled, attempting call...")
+                    # Use Gemini Pro for complex tasks, Gemini Flash for simple
+                    model_id = self.models['gemini_pro'] if complexity['is_complex'] else self.models['gemini_flash']
+                    response = self._call_gemini_api(model_id, messages)
+                    content = self._extract_response_content(response, 'gemini')
+                    model_name = "gemini_pro" if complexity['is_complex'] else "gemini_flash"
+                    print(f"✅ {analysis_type} generated using {model_name}")
+                    return {
+                        "content": content,
+                        "model_used": model_name,
+                        "complexity": complexity,
+                        "provider": "gemini"
+                    }
                 
                 elif provider == 'claude' and self.anthropic_api_key:
-                    provider_name, model_name, model_id = self._select_provider_and_model(complexity, analysis_type)
-                    if provider_name == 'claude':
-                        messages = [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content}
-                        ]
-                        response = self._call_claude_api(model_id, messages)
-                        content = self._extract_response_content(response, 'claude')
-                        print(f"✅ {analysis_type} generated using {model_name}")
-                        return {
-                            "content": content,
-                            "model_used": model_name,
-                            "complexity": complexity,
-                            "provider": "claude"
-                        }
+                    print(f"🔍 [DEBUG] Claude enabled, attempting call...")
+                    # Use Claude Sonnet for complex tasks, Claude Haiku for simple
+                    model_id = self.models['claude_sonnet'] if complexity['is_complex'] else self.models['claude_haiku']
+                    response = self._call_claude_api(model_id, messages)
+                    content = self._extract_response_content(response, 'claude')
+                    model_name = "claude_sonnet" if complexity['is_complex'] else "claude_haiku"
+                    print(f"✅ {analysis_type} generated using {model_name}")
+                    return {
+                        "content": content,
+                        "model_used": model_name,
+                        "complexity": complexity,
+                        "provider": "claude"
+                    }
                 
                 elif provider == 'openai' and self.openai_api_key:
-                    messages = [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ]
+                    print(f"🔍 [DEBUG] OpenAI enabled, attempting call...")
                     response = self._call_openai_api(messages)
                     content = self._extract_response_content(response, 'openai')
                     print(f"✅ {analysis_type} generated using OpenAI fallback")
@@ -433,6 +431,8 @@ Provide a comprehensive analysis in this exact format:
                         "complexity": complexity,
                         "provider": "openai"
                     }
+                else:
+                    print(f"🔍 [DEBUG] Provider {provider} not enabled or no API key")
                     
             except Exception as e:
                 print(f"❌ {provider.capitalize()} API failed for {analysis_type}: {str(e)}")
