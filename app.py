@@ -3570,6 +3570,40 @@ def remove_email_filter():
     else:
         return jsonify({'error': 'Filter not found'}), 404
 
+@app.before_request
+def enforce_subscription_expiry():
+    user_id = session.get('user_id')
+    if not user_id:
+        return
+    user = user_model.get_user_by_id(user_id)
+    if not user:
+        return
+    plan = user.get('subscription_plan', 'free')
+    expires = user.get('subscription_expires')
+    status = user.get('subscription_status', 'inactive')
+    # Only check for Pro/Enterprise
+    if plan in ['pro', 'enterprise'] and expires:
+        try:
+            # Handle both string and datetime
+            if isinstance(expires, str):
+                expires_dt = datetime.fromisoformat(expires)
+            else:
+                expires_dt = expires
+            if expires_dt < datetime.now():
+                # Downgrade user in DB
+                user_model.update_subscription(
+                    user_id=user_id,
+                    plan_name='free',
+                    stripe_customer_id=None,
+                    expires_at=None
+                )
+                # Update session
+                session['subscription_plan'] = 'free'
+                session['subscription_status'] = 'inactive'
+                session['subscription_expires'] = None
+        except Exception as e:
+            print(f"[Subscription Expiry Check] Error: {e}")
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(debug=False, host='0.0.0.0', port=port) 
