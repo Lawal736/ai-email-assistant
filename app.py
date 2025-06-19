@@ -624,7 +624,7 @@ def dashboard():
         print("📧 Fetching today's and recent unattended emails...")
         plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
         print(f"🔍 [DEBUG] User plan for email fetching: {plan}")
-        emails = gmail_service.get_recent_and_unattended_emails(max_results=50, user_plan=plan, days=3)
+        emails = gmail_service.get_recent_and_unattended_emails(max_results=50, user_plan=plan, days=2)
         print(f"📧 Found {len(emails)} emails for today + recent unattended")
         
         # Get user's email filters
