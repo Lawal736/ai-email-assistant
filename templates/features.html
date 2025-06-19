@@ -4,6 +4,103 @@
 {% block content %}
 <div class="container py-5">
     <h1 class="mb-4 text-center">Features</h1>
+    <!-- Premium Feature Comparison Table -->
+    <div class="row justify-content-center mb-5">
+      <div class="col-lg-10">
+        <div class="card shadow-lg border-0 mb-4">
+          <div class="card-header bg-gradient-primary text-white text-center py-3" style="border-radius: 1rem 1rem 0 0;">
+            <h2 class="mb-0"><i class="fas fa-layer-group me-2"></i>Compare Plans</h2>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-bordered align-middle mb-0 feature-table">
+                <thead class="bg-light">
+                  <tr>
+                    <th class="text-start">Feature</th>
+                    <th class="text-center text-success">Free</th>
+                    <th class="text-center text-primary">Pro</th>
+                    <th class="text-center text-dark">Enterprise</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Gmail Connect & Dashboard</td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td></tr>
+                  <tr><td>Keyword Prioritization</td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td></tr>
+                  <tr><td>AI-Powered Prioritization</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td></tr>
+                  <tr><td>Action Items & Recommendations</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td></tr>
+                  <tr><td>Custom Insights</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td></tr>
+                  <tr><td>Document/Attachment Analysis</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td><td class="text-center"><i class="fas fa-check text-primary"></i></td></tr>
+                  <tr><td>Manage VIP Senders</td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td></tr>
+                  <tr><td>VIP Always High Priority</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center"><i class="fas fa-check text-warning"></i></td><td class="text-center"><i class="fas fa-check text-warning"></i></td></tr>
+                  <tr><td>Built-in Filtering</td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td></tr>
+                  <tr><td>User Filters (Sender/Subject)</td><td class="text-center">Up to 3</td><td class="text-center text-primary">Unlimited</td><td class="text-center text-primary">Unlimited</td></tr>
+                  <tr><td>Advanced Filters (Keyword/Regex)</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-primary">✔</td><td class="text-center text-primary">✔</td></tr>
+                  <tr><td>Premium Filter UI</td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td><td class="text-center"><i class="fas fa-check text-success"></i></td></tr>
+                  <tr><td>Usage Quota (emails/month)</td><td class="text-center">100</td><td class="text-center">500</td><td class="text-center">2,000+</td></tr>
+                  <tr><td>Team Collaboration</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-dark">✔</td></tr>
+                  <tr><td>API Access</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-dark">✔</td></tr>
+                  <tr><td>Priority Support</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-primary">✔</td><td class="text-center text-primary">✔</td></tr>
+                  <tr><td>Enterprise Security/Compliance</td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-muted"><i class="fas fa-times"></i></td><td class="text-center text-dark">✔</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Categorized Feature Breakdown -->
+    <div class="row mb-5">
+      <div class="col-lg-10 mx-auto">
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-gradient-primary text-white">
+            <h4 class="mb-0"><i class="fas fa-list-ul me-2"></i>Feature Breakdown by Plan</h4>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-4 mb-4">
+                <h5 class="text-success"><i class="fas fa-check-circle me-1"></i>Free Plan</h5>
+                <ul class="list-unstyled ms-2">
+                  <li><i class="fas fa-envelope-open-text text-success me-2"></i>Connect Gmail & view up to 10 emails per load</li>
+                  <li><i class="fas fa-tasks text-success me-2"></i>Keyword-based prioritization</li>
+                  <li><i class="fas fa-filter text-success me-2"></i>Built-in & user filters (up to 3, sender/subject)</li>
+                  <li><i class="fas fa-star text-success me-2"></i>Manage VIP senders</li>
+                  <li><i class="fas fa-chart-bar text-success me-2"></i>Daily summary & stats</li>
+                  <li><i class="fas fa-user-shield text-success me-2"></i>Secure authentication</li>
+                  <li><i class="fas fa-cogs text-success me-2"></i>Basic account management</li>
+                  <li><i class="fas fa-envelope text-success me-2"></i>100 emails/month quota</li>
+                </ul>
+              </div>
+              <div class="col-md-4 mb-4">
+                <h5 class="text-primary"><i class="fas fa-star me-1"></i>Pro Plan</h5>
+                <ul class="list-unstyled ms-2">
+                  <li><i class="fas fa-brain text-primary me-2"></i>AI-powered prioritization (LLM-based)</li>
+                  <li><i class="fas fa-magic text-primary me-2"></i>AI-generated action items & recommendations</li>
+                  <li><i class="fas fa-lightbulb text-primary me-2"></i>Custom insights & analysis</li>
+                  <li><i class="fas fa-file-alt text-primary me-2"></i>Document/attachment analysis</li>
+                  <li><i class="fas fa-filter text-primary me-2"></i>Unlimited user filters (all types)</li>
+                  <li><i class="fas fa-gem text-primary me-2"></i>Premium filter UI</li>
+                  <li><i class="fas fa-star text-primary me-2"></i>VIP always high priority</li>
+                  <li><i class="fas fa-chart-line text-primary me-2"></i>Enhanced analytics</li>
+                  <li><i class="fas fa-envelope text-primary me-2"></i>500 emails/month quota</li>
+                  <li><i class="fas fa-headset text-primary me-2"></i>Priority support</li>
+                </ul>
+              </div>
+              <div class="col-md-4 mb-4">
+                <h5 class="text-dark"><i class="fas fa-crown me-1"></i>Enterprise</h5>
+                <ul class="list-unstyled ms-2">
+                  <li><i class="fas fa-users text-dark me-2"></i>Team collaboration</li>
+                  <li><i class="fas fa-plug text-dark me-2"></i>API access & custom integrations</li>
+                  <li><i class="fas fa-user-tie text-dark me-2"></i>Dedicated manager & onboarding</li>
+                  <li><i class="fas fa-shield-alt text-dark me-2"></i>Advanced security & compliance</li>
+                  <li><i class="fas fa-cogs text-dark me-2"></i>Custom AI models</li>
+                  <li><i class="fas fa-envelope text-dark me-2"></i>2,000+ emails/month quota</li>
+                  <li><i class="fas fa-headset text-dark me-2"></i>Enterprise support & SLAs</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="row justify-content-center mb-5">
         <div class="col-auto">
             <a href="/pricing" class="btn btn-outline-primary me-2">Pricing</a>
