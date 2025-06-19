@@ -661,8 +661,27 @@ def dashboard():
         # Get current date
         current_date = datetime.now().strftime('%B %d, %Y')
         
+        # Group emails by date for display
+        from datetime import datetime, timedelta
+        grouped_emails = {'Today': [], 'Yesterday': [], 'Earlier': []}
+        today = datetime.now().date()
+        for email in processed_emails:
+            email_date = email.get('date', '')
+            try:
+                email_dt = datetime.fromisoformat(email_date).date() if 'T' in email_date else datetime.strptime(email_date, '%Y-%m-%d').date()
+            except Exception:
+                grouped_emails['Earlier'].append(email)
+                continue
+            if email_dt == today:
+                grouped_emails['Today'].append(email)
+            elif email_dt == today - timedelta(days=1):
+                grouped_emails['Yesterday'].append(email)
+            else:
+                grouped_emails['Earlier'].append(email)
+        
         return render_template('dashboard.html', 
                              emails=processed_emails, 
+                             grouped_emails=grouped_emails,
                              email_threads=email_threads,
                              summary="Ready to analyze emails with AI. Click 'Load AI Analysis' to get insights.",
                              action_items=[],
@@ -3603,6 +3622,19 @@ def enforce_subscription_expiry():
                 session['subscription_expires'] = None
         except Exception as e:
             print(f"[Subscription Expiry Check] Error: {e}")
+
+@app.route('/api/analyze-emails', methods=['POST'])
+@login_required
+def analyze_emails():
+    """On-demand: Analyze current emails for action items and response recommendations."""
+    data = request.get_json()
+    emails = data.get('emails', [])
+    # Placeholder: implement your AI/NLP logic here
+    # For now, return empty lists
+    action_items = []
+    recommendations = []
+    # Example: you could call ai_service.extract_action_items(emails)
+    return jsonify({'action_items': action_items, 'recommendations': recommendations})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

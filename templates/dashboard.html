@@ -216,6 +216,16 @@
     </div>
     {% endif %}
 
+    <!-- Action Items & Recommendations On-Demand Button -->
+    <div class="row mb-3">
+        <div class="col-12 text-end">
+            <button class="btn btn-gradient-primary btn-lg fw-bold" id="analyzeEmailsBtn" onclick="analyzeEmailsOnDemand()">
+                <i class="fas fa-magic me-2"></i>Analyze for Action Items & Recommendations
+            </button>
+            <span id="analyzeEmailsStatus" class="ms-3 text-muted"></span>
+        </div>
+    </div>
+
     <!-- Action Items -->
     <div class="col-lg-6 mb-4">
         <div class="card">
@@ -359,7 +369,7 @@
                 </h4>
             </div>
             <div class="card-body">
-                {% if emails %}
+                {% if grouped_emails %}
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead>
@@ -373,50 +383,59 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for email in emails %}
-                                    <tr class="email-card">
-                                        <td>
-                                            {{ email.sender_clean or email.sender.split('<')[0].strip() or email.sender }}
-                                        </td>
-                                        <td>
-                                            <div class="fw-medium">{{ email.subject }}</div>
-                                            <small class="text-muted">{{ email.body_preview }}</small>
-                                        </td>
-                                        <td>
-                                            {% set badge_class = '' %}
-                                            {% if ai_priority_toggle %}
-                                                {% set p = email.ai_priority or 'normal' %}
-                                            {% else %}
-                                                {% set p = email.priority or 'normal' %}
-                                            {% endif %}
-                                            {% if p.lower() in ['urgent', 'high'] %}
-                                                {% set badge_class = 'bg-danger text-white' %}
-                                            {% elif p.lower() == 'medium' %}
-                                                {% set badge_class = 'bg-warning text-dark' %}
-                                            {% elif p.lower() == 'low' %}
-                                                {% set badge_class = 'bg-secondary text-white' %}
-                                            {% else %}
-                                                {% set badge_class = 'bg-primary text-white' %}
-                                            {% endif %}
-                                            <span class="badge {{ badge_class }}">{{ p|title }}{% if ai_priority_toggle and email.ai_priority %} (AI){% endif %}</span>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-secondary">{{ email.category|title if email.category else 'Other' }}</span>
-                                        </td>
-                                        <td>
-                                            <small>{{ email.date.split('T')[1][:5] if 'T' in email.date else email.date }}</small>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-primary" onclick="openEmailModal('{{ email.id }}')">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                <button class="btn btn-outline-success" onclick="generateResponse('{{ email.id }}')">
-                                                    <i class="fas fa-reply"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                {% for group, emails_in_group in grouped_emails.items() %}
+                                    {% if emails_in_group %}
+                                        <tr class="table-group-header">
+                                            <td colspan="6" class="fw-bold bg-light text-primary" style="font-size:1.1em;">
+                                                <i class="fas fa-calendar-day me-2"></i>{{ group }}
+                                            </td>
+                                        </tr>
+                                        {% for email in emails_in_group %}
+                                            <tr class="email-card">
+                                                <td>
+                                                    {{ email.sender_clean or email.sender.split('<')[0].strip() or email.sender }}
+                                                </td>
+                                                <td>
+                                                    <div class="fw-medium">{{ email.subject }}</div>
+                                                    <small class="text-muted">{{ email.body_preview }}</small>
+                                                </td>
+                                                <td>
+                                                    {% set badge_class = '' %}
+                                                    {% if ai_priority_toggle %}
+                                                        {% set p = email.ai_priority or 'normal' %}
+                                                    {% else %}
+                                                        {% set p = email.priority or 'normal' %}
+                                                    {% endif %}
+                                                    {% if p.lower() in ['urgent', 'high'] %}
+                                                        {% set badge_class = 'bg-danger text-white' %}
+                                                    {% elif p.lower() == 'medium' %}
+                                                        {% set badge_class = 'bg-warning text-dark' %}
+                                                    {% elif p.lower() == 'low' %}
+                                                        {% set badge_class = 'bg-secondary text-white' %}
+                                                    {% else %}
+                                                        {% set badge_class = 'bg-primary text-white' %}
+                                                    {% endif %}
+                                                    <span class="badge {{ badge_class }}">{{ p|title }}{% if ai_priority_toggle and email.ai_priority %} (AI){% endif %}</span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-secondary">{{ email.category|title if email.category else 'Other' }}</span>
+                                                </td>
+                                                <td>
+                                                    <small>{{ email.date.split('T')[1][:5] if 'T' in email.date else email.date }}</small>
+                                                </td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm">
+                                                        <button class="btn btn-outline-primary" onclick="openEmailModal('{{ email.id }}')">
+                                                            <i class="fas fa-eye"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-success" onclick="generateResponse('{{ email.id }}')">
+                                                            <i class="fas fa-reply"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    {% endif %}
                                 {% endfor %}
                             </tbody>
                         </table>
