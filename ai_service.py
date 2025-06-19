@@ -8,19 +8,62 @@ load_dotenv()
 
 class HybridAIService:
     """
-    Hybrid AI service that intelligently routes requests between Claude Sonnet and Claude Haiku
+    Hybrid AI service that intelligently routes requests between multiple LLM providers
     based on email complexity and cost optimization.
     """
     
     def __init__(self):
+        # API Keys
         self.anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
         self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
+        self.gemini_api_key = os.getenv('GEMINI_API_KEY')
         
         # Model configurations
         self.models = {
             'claude_sonnet': 'claude-3-5-sonnet-20241022',
             'claude_haiku': 'claude-3-haiku-20240307',
-            'gpt_fallback': 'gpt-3.5-turbo'
+            'gpt_fallback': 'gpt-3.5-turbo',
+            'deepseek_coder': 'deepseek-coder',
+            'deepseek_chat': 'deepseek-chat',
+            'gemini_pro': 'gemini-1.5-pro',
+            'gemini_flash': 'gemini-1.5-flash'
+        }
+        
+        # Provider configurations
+        self.providers = {
+            'claude': {
+                'api_key': self.anthropic_api_key,
+                'base_url': 'https://api.anthropic.com/v1/messages',
+                'headers': {
+                    "x-api-key": self.anthropic_api_key,
+                    "content-type": "application/json",
+                    "anthropic-version": "2023-06-01"
+                } if self.anthropic_api_key else {}
+            },
+            'openai': {
+                'api_key': self.openai_api_key,
+                'base_url': 'https://api.openai.com/v1/chat/completions',
+                'headers': {
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json"
+                } if self.openai_api_key else {}
+            },
+            'deepseek': {
+                'api_key': self.deepseek_api_key,
+                'base_url': 'https://api.deepseek.com/v1/chat/completions',
+                'headers': {
+                    "Authorization": f"Bearer {self.deepseek_api_key}",
+                    "Content-Type": "application/json"
+                } if self.deepseek_api_key else {}
+            },
+            'gemini': {
+                'api_key': self.gemini_api_key,
+                'base_url': 'https://generativelanguage.googleapis.com/v1beta/models',
+                'headers': {
+                    "Content-Type": "application/json"
+                } if self.gemini_api_key else {}
+            }
         }
         
         # Complexity thresholds
@@ -28,13 +71,22 @@ class HybridAIService:
         self.max_tokens = {
             'claude_sonnet': 4000,
             'claude_haiku': 2000,
-            'gpt_fallback': 1000
+            'gpt_fallback': 1000,
+            'deepseek_coder': 4000,
+            'deepseek_chat': 4000,
+            'gemini_pro': 8192,
+            'gemini_flash': 4096
         }
         
         # Cost optimization settings
         self.use_haiku_for_simple = True
         self.use_sonnet_for_complex = True
         self.fallback_to_openai = True
+        self.enable_deepseek = bool(self.deepseek_api_key)
+        self.enable_gemini = bool(self.gemini_api_key)
+        
+        # Provider priority (for fallback)
+        self.provider_priority = ['claude', 'deepseek', 'gemini', 'openai']
         
     def _calculate_complexity(self, email_content: str) -> Dict:
         """
@@ -154,6 +206,76 @@ class HybridAIService:
             return response.json()
         except requests.exceptions.RequestException as e:
             raise Exception(f"OpenAI API error: {str(e)}")
+
+    def _call_deepseek_api(self, model: str, messages: List[Dict], max_tokens: int = 2000) -> Dict:
+        """
+        Make API call to DeepSeek models.
+        """
+        if not self.deepseek_api_key:
+            raise ValueError("DEEPSEEK_API_KEY not found in environment variables")
+        
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.7
+        }
+        
+        try:
+            response = requests.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"DeepSeek API error: {str(e)}")
+
+    def _call_gemini_api(self, model: str, messages: List[Dict], max_tokens: int = 2048) -> Dict:
+        """
+        Make API call to Google Gemini models.
+        """
+        if not self.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY not found in environment variables")
+        
+        # Convert messages to Gemini format
+        contents = []
+        for msg in messages:
+            if msg['role'] == 'user':
+                contents.append({
+                    "parts": [{"text": msg['content']}]
+                })
+            elif msg['role'] == 'system':
+                # Gemini doesn't have system messages, prepend to first user message
+                if contents and contents[0].get('parts'):
+                    contents[0]['parts'][0]['text'] = f"{msg['content']}\n\n{contents[0]['parts'][0]['text']}"
+        
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": max_tokens,
+                "temperature": 0.7
+            }
+        }
+        
+        try:
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}",
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Gemini API error: {str(e)}")
     
     def _extract_response_content(self, response: Dict, provider: str) -> str:
         """
@@ -163,6 +285,10 @@ class HybridAIService:
             return response['content'][0]['text']
         elif provider == 'openai':
             return response['choices'][0]['message']['content']
+        elif provider == 'deepseek':
+            return response['choices'][0]['message']['content']
+        elif provider == 'gemini':
+            return response['candidates'][0]['content']['parts'][0]['text']
         else:
             raise ValueError(f"Unknown provider: {provider}")
     
@@ -398,39 +524,52 @@ Format the summary in a clear, structured way."""
         Analyze arbitrary text prompt using hybrid AI model selection.
         Returns the generated content as a string.
         """
-        # Use complexity to select model (treat prompt as 'email_content')
+        # Calculate complexity and select provider
         complexity = self._calculate_complexity(prompt)
-        if complexity['is_complex'] and self.use_sonnet_for_complex:
-            model = self.models['claude_sonnet']
-            model_name = 'claude_sonnet'
-        elif not complexity['is_complex'] and self.use_haiku_for_simple:
-            model = self.models['claude_haiku']
-            model_name = 'claude_haiku'
-        else:
-            model = self.models['claude_sonnet']
-            model_name = 'claude_sonnet'
-
-        messages = [
-            {"role": "user", "content": prompt}
-        ]
-        try:
-            response = self._call_claude_api(model, messages, max_tokens=max_tokens)
-            content = self._extract_response_content(response, 'claude')
-            print(f"✅ analyze_text generated using {model_name}")
-            return content
-        except Exception as e:
-            print(f"❌ Claude API failed for analyze_text: {str(e)}")
-            if self.fallback_to_openai:
-                try:
+        
+        # Try providers in order of preference
+        for provider in self.provider_priority:
+            try:
+                if provider == 'claude' and self.anthropic_api_key:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity)
+                    if provider_name == 'claude':
+                        messages = [{"role": "user", "content": prompt}]
+                        response = self._call_claude_api(model_id, messages, max_tokens=max_tokens)
+                        content = self._extract_response_content(response, 'claude')
+                        print(f"✅ analyze_text generated using {model_name}")
+                        return content
+                
+                elif provider == 'deepseek' and self.enable_deepseek:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity)
+                    if provider_name == 'deepseek':
+                        messages = [{"role": "user", "content": prompt}]
+                        response = self._call_deepseek_api(model_id, messages, max_tokens=max_tokens)
+                        content = self._extract_response_content(response, 'deepseek')
+                        print(f"✅ analyze_text generated using {model_name}")
+                        return content
+                
+                elif provider == 'gemini' and self.enable_gemini:
+                    provider_name, model_name, model_id = self._select_provider_and_model(complexity)
+                    if provider_name == 'gemini':
+                        messages = [{"role": "user", "content": prompt}]
+                        response = self._call_gemini_api(model_id, messages, max_tokens=max_tokens)
+                        content = self._extract_response_content(response, 'gemini')
+                        print(f"✅ analyze_text generated using {model_name}")
+                        return content
+                
+                elif provider == 'openai' and self.openai_api_key:
+                    messages = [{"role": "user", "content": prompt}]
                     response = self._call_openai_api(messages, max_tokens=max_tokens)
                     content = self._extract_response_content(response, 'openai')
                     print(f"✅ analyze_text generated using OpenAI fallback")
                     return content
-                except Exception as fallback_error:
-                    print(f"❌ OpenAI fallback also failed: {str(fallback_error)}")
-                    raise Exception(f"All AI services failed for analyze_text: {str(e)}")
-            else:
-                raise e
+                    
+            except Exception as e:
+                print(f"❌ {provider.capitalize()} API failed: {str(e)}")
+                continue
+        
+        # If all providers fail
+        raise Exception(f"All AI providers failed for analyze_text. Please check your API keys and network connection.")
 
     def assign_priority(self, prompt: str) -> dict:
         """
@@ -461,6 +600,52 @@ Format the summary in a clear, structured way."""
         except Exception as e:
             print(f"[assign_priority ERROR] {e}")
             return {'priority': 'normal', 'reason': str(e)}
+
+    def _select_provider_and_model(self, complexity: Dict, task_type: str = "general") -> tuple:
+        """
+        Intelligently select the best provider and model based on complexity and task type.
+        Returns (provider, model_name, model_id)
+        """
+        is_complex = complexity['is_complex']
+        
+        # Define model selection logic
+        if task_type == "coding" and self.enable_deepseek:
+            # DeepSeek Coder is excellent for coding tasks
+            return ('deepseek', 'deepseek_coder', self.models['deepseek_coder'])
+        
+        if is_complex:
+            # Complex tasks: prefer Claude Sonnet, then DeepSeek Chat, then Gemini Pro
+            if self.anthropic_api_key:
+                return ('claude', 'claude_sonnet', self.models['claude_sonnet'])
+            elif self.enable_deepseek:
+                return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
+            elif self.enable_gemini:
+                return ('gemini', 'gemini_pro', self.models['gemini_pro'])
+            elif self.openai_api_key:
+                return ('openai', 'gpt_fallback', self.models['gpt_fallback'])
+        else:
+            # Simple tasks: prefer Claude Haiku, then Gemini Flash, then DeepSeek Chat
+            if self.anthropic_api_key:
+                return ('claude', 'claude_haiku', self.models['claude_haiku'])
+            elif self.enable_gemini:
+                return ('gemini', 'gemini_flash', self.models['gemini_flash'])
+            elif self.enable_deepseek:
+                return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
+            elif self.openai_api_key:
+                return ('openai', 'gpt_fallback', self.models['gpt_fallback'])
+        
+        # Fallback to any available provider
+        for provider in self.provider_priority:
+            if provider == 'claude' and self.anthropic_api_key:
+                return ('claude', 'claude_sonnet', self.models['claude_sonnet'])
+            elif provider == 'deepseek' and self.enable_deepseek:
+                return ('deepseek', 'deepseek_chat', self.models['deepseek_chat'])
+            elif provider == 'gemini' and self.enable_gemini:
+                return ('gemini', 'gemini_pro', self.models['gemini_pro'])
+            elif provider == 'openai' and self.openai_api_key:
+                return ('openai', 'gpt_fallback', self.models['gpt_fallback'])
+        
+        raise Exception("No AI providers available. Please configure at least one API key.")
 
 # Legacy OpenAI service for backward compatibility
 class AIService:

@@ -307,6 +307,65 @@ For support and questions:
 - ✅ Feature gating based on subscription levels
 - ✅ Comprehensive payment tracking and history
 
+## AI Providers Support
+
+This application supports multiple AI providers for intelligent email analysis and processing:
+
+### Supported Providers
+
+1. **Anthropic Claude** (Primary)
+   - Models: Claude 3.5 Sonnet, Claude 3 Haiku
+   - Best for: Complex analysis, nuanced understanding
+   - Environment variable: `ANTHROPIC_API_KEY`
+
+2. **DeepSeek** (New!)
+   - Models: DeepSeek Chat, DeepSeek Coder
+   - Best for: Technical emails, coding-related content
+   - Environment variable: `DEEPSEEK_API_KEY`
+
+3. **Google Gemini** (New!)
+   - Models: Gemini 1.5 Pro, Gemini 1.5 Flash
+   - Best for: Fast processing, cost-effective analysis
+   - Environment variable: `GEMINI_API_KEY`
+
+4. **OpenAI GPT** (Fallback)
+   - Models: GPT-3.5 Turbo
+   - Best for: Reliable fallback option
+   - Environment variable: `OPENAI_API_KEY`
+
+### Setup Instructions
+
+1. **Get API Keys:**
+   - [Anthropic Claude](https://console.anthropic.com/)
+   - [DeepSeek](https://platform.deepseek.com/)
+   - [Google Gemini](https://makersuite.google.com/app/apikey)
+   - [OpenAI](https://platform.openai.com/api-keys)
+
+2. **Configure Environment Variables:**
+   ```bash
+   # Copy the example file
+   cp env_example.txt .env
+   
+   # Edit .env and add your API keys
+   ANTHROPIC_API_KEY=your_anthropic_key
+   DEEPSEEK_API_KEY=your_deepseek_key
+   GEMINI_API_KEY=your_gemini_key
+   OPENAI_API_KEY=your_openai_key
+   ```
+
+3. **Provider Selection Logic:**
+   - **Complex emails**: Claude Sonnet → DeepSeek Chat → Gemini Pro
+   - **Simple emails**: Claude Haiku → Gemini Flash → DeepSeek Chat
+   - **Coding tasks**: DeepSeek Coder (automatically selected)
+   - **Fallback**: Automatic fallback to available providers
+
+### Benefits of Multiple Providers
+
+- **Cost Optimization**: Use cheaper models for simple tasks
+- **Reliability**: Automatic fallback if one provider fails
+- **Performance**: Choose the best model for each task type
+- **Flexibility**: Mix and match providers based on your needs
+
 ---
 
 **Built with ❤️ using Flask, Gmail API, and AI services**
