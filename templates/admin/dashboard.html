@@ -64,7 +64,7 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-3">
-                            <a href="{{ url_for('admin_users_list') }}" class="btn btn-primary w-100 mb-2">
+                            <a href="{{ url_for('admin_users_view') }}" class="btn btn-primary w-100 mb-2">
                                 <i class="fas fa-users me-2"></i>
                                 Manage Users
                             </a>
@@ -117,10 +117,10 @@
                             <tbody>
                                 {% for activity in recent_activity %}
                                 <tr>
-                                    <td>{{ activity.timestamp }}</td>
-                                    <td>{{ activity.user_email }}</td>
-                                    <td>{{ activity.action }}</td>
-                                    <td>{{ activity.details }}</td>
+                                    <td>{{ activity[3] if activity|length > 3 else 'N/A' }}</td>
+                                    <td>{{ activity[0] if activity|length > 0 else 'Unknown' }}</td>
+                                    <td>{{ activity[1] if activity|length > 1 else 'N/A' }}</td>
+                                    <td>{{ activity[2] if activity|length > 2 else 'N/A' }}</td>
                                 </tr>
                                 {% else %}
                                 <tr>
