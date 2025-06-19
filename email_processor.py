@@ -766,40 +766,75 @@ Format your response in clear sections with bullet points where appropriate.
     def process_emails_hybrid(self, emails: List[Dict[str, Any]], user: Dict[str, Any], ai_priority_toggle: bool) -> List[Dict[str, Any]]:
         processed_emails = []
         user_plan = (user or {}).get('subscription_plan', 'free')
+        user_id = (user or {}).get('id')
         vip_senders = set((user or {}).get('vip_senders', []))  # Assume this is a list of emails/names
         vip_senders = set(e.strip().lower() for e in vip_senders)
         print(f"[DEBUG] VIP senders for user: {vip_senders}")
+        
         for email in emails:
             processed_email = email.copy()
             print(f"[DEBUG] Processing email from sender: {processed_email.get('sender')}")
             sender_email = self._extract_email_address(processed_email.get('sender', ''))
-            use_llm = self._should_use_llm_priority(processed_email, user_plan, ai_priority_toggle, vip_senders)
-            print(f"[DEBUG] use_llm for sender {processed_email.get('sender')}: {use_llm}")
-            if use_llm and self.ai_service:
-                # Call LLM for priority
-                prompt_prefix = ''
-                if sender_email in vip_senders:
-                    prompt_prefix = 'The following email is from a VIP sender. Always assign it a HIGH or URGENT priority unless it is clearly spam or irrelevant.\n\n'
-                prompt = f"""{prompt_prefix}You are an AI email assistant. Given the following email, assign a priority (urgent, high, normal, low) and explain your reasoning.\nEmail:\nSubject: {processed_email.get('subject','')}\nFrom: {processed_email.get('sender','')}\nBody: {processed_email.get('body','')}\nOutput JSON: {{\"priority\": \"...\", \"reason\": \"...\"}}\n"""
+            
+            # Check cache first
+            cached_analysis = None
+            if user_id and processed_email.get('id'):
                 try:
-                    llm_result = self.ai_service.assign_priority(prompt)
-                    if llm_result and isinstance(llm_result, dict):
-                        # VIP override: if sender is VIP and priority is not high/urgent, force high
-                        priority = llm_result.get('priority', 'normal').lower()
-                        if sender_email in vip_senders and priority not in ['high', 'urgent']:
-                            print(f"[VIP OVERRIDE] Forcing priority to 'high' for VIP sender: {sender_email}")
-                            priority = 'high'
-                            llm_result['reason'] = f"VIP sender override: {llm_result.get('reason', '')}"
-                        processed_email['ai_priority'] = priority
-                        processed_email['ai_priority_reason'] = llm_result.get('reason', '')
-                        processed_email['priority'] = priority
-                    else:
-                        processed_email['priority'] = self._keyword_priority(processed_email)
+                    from models import user_model
+                    cached_analysis = user_model.get_email_analysis(user_id, processed_email['id'])
+                    if cached_analysis:
+                        print(f"[CACHE HIT] Using cached analysis for email {processed_email['id']}")
+                        processed_email['ai_priority'] = cached_analysis['ai_priority']
+                        processed_email['ai_priority_reason'] = cached_analysis['ai_priority_reason']
+                        processed_email['priority'] = cached_analysis['ai_priority']
                 except Exception as e:
-                    print(f"[LLM Priority Error] {e}")
+                    print(f"[CACHE ERROR] {e}")
+            
+            # If no cache, check if we should use LLM
+            if not cached_analysis:
+                use_llm = self._should_use_llm_priority(processed_email, user_plan, ai_priority_toggle, vip_senders)
+                print(f"[DEBUG] use_llm for sender {processed_email.get('sender')}: {use_llm}")
+                
+                if use_llm and self.ai_service:
+                    # Call LLM for priority
+                    prompt_prefix = ''
+                    if sender_email in vip_senders:
+                        prompt_prefix = 'The following email is from a VIP sender. Always assign it a HIGH or URGENT priority unless it is clearly spam or irrelevant.\n\n'
+                    prompt = f"""{prompt_prefix}You are an AI email assistant. Given the following email, assign a priority (urgent, high, normal, low) and explain your reasoning.\nEmail:\nSubject: {processed_email.get('subject','')}\nFrom: {processed_email.get('sender','')}\nBody: {processed_email.get('body','')}\nOutput JSON: {{\"priority\": \"...\", \"reason\": \"...\"}}\n"""
+                    try:
+                        llm_result = self.ai_service.assign_priority(prompt)
+                        if llm_result and isinstance(llm_result, dict):
+                            # VIP override: if sender is VIP and priority is not high/urgent, force high
+                            priority = llm_result.get('priority', 'normal').lower()
+                            if sender_email in vip_senders and priority not in ['high', 'urgent']:
+                                print(f"[VIP OVERRIDE] Forcing priority to 'high' for VIP sender: {sender_email}")
+                                priority = 'high'
+                                llm_result['reason'] = f"VIP sender override: {llm_result.get('reason', '')}"
+                            
+                            processed_email['ai_priority'] = priority
+                            processed_email['ai_priority_reason'] = llm_result.get('reason', '')
+                            processed_email['priority'] = priority
+                            
+                            # Save to cache
+                            if user_id and processed_email.get('id'):
+                                try:
+                                    user_model.save_email_analysis(
+                                        user_id, 
+                                        processed_email['id'], 
+                                        priority, 
+                                        llm_result.get('reason', '')
+                                    )
+                                    print(f"[CACHE SAVED] Analysis saved for email {processed_email['id']}")
+                                except Exception as e:
+                                    print(f"[CACHE SAVE ERROR] {e}")
+                        else:
+                            processed_email['priority'] = self._keyword_priority(processed_email)
+                    except Exception as e:
+                        print(f"[LLM Priority Error] {e}")
+                        processed_email['priority'] = self._keyword_priority(processed_email)
+                else:
                     processed_email['priority'] = self._keyword_priority(processed_email)
-            else:
-                processed_email['priority'] = self._keyword_priority(processed_email)
+            
             processed_emails.append(processed_email)
         processed_emails.sort(key=lambda x: (self._priority_to_number(x['priority']), x['date']), reverse=True)
         return processed_emails

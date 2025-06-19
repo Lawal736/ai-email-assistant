@@ -662,7 +662,6 @@ def dashboard():
         current_date = datetime.now().strftime('%B %d, %Y')
         
         # Group emails by date for display
-        from datetime import datetime, timedelta
         grouped_emails = {'Today': [], 'Yesterday': [], 'Earlier': []}
         today = datetime.now().date()
         for email in processed_emails:

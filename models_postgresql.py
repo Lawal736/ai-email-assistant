@@ -191,6 +191,22 @@ class DatabaseManager:
                 ON user_email_filters(user_id)
             ''')
             
+            # Create user_email_analysis table for caching AI analysis results
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_email_analysis (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    email_id VARCHAR(255) NOT NULL,
+                    ai_priority VARCHAR(32),
+                    ai_priority_reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    UNIQUE(user_id, email_id)
+                )
+            ''')
+            # Create index for faster lookups
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_email_analysis_lookup ON user_email_analysis (user_id, email_id)')
+            
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)')
@@ -1090,6 +1106,73 @@ class User:
             ''', (user_id, filter_type, pattern.strip()))
             conn.commit()
             return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def get_email_analysis(self, user_id, email_id):
+        """Get cached AI analysis for an email (PostgreSQL)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT ai_priority, ai_priority_reason, created_at 
+                FROM user_email_analysis 
+                WHERE user_id = %s AND email_id = %s
+            ''', (user_id, email_id))
+            result = cursor.fetchone()
+            if result:
+                return {
+                    'ai_priority': result[0],
+                    'ai_priority_reason': result[1],
+                    'created_at': result[2]
+                }
+            return None
+        finally:
+            conn.close()
+
+    def save_email_analysis(self, user_id, email_id, ai_priority, ai_priority_reason):
+        """Save AI analysis results for an email (PostgreSQL)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO user_email_analysis 
+                (user_id, email_id, ai_priority, ai_priority_reason, created_at)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, email_id) 
+                DO UPDATE SET 
+                    ai_priority = EXCLUDED.ai_priority,
+                    ai_priority_reason = EXCLUDED.ai_priority_reason,
+                    created_at = CURRENT_TIMESTAMP
+            ''', (user_id, email_id, ai_priority, ai_priority_reason))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving email analysis: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def clear_email_analysis(self, user_id, email_id=None):
+        """Clear cached AI analysis for a user (or specific email) (PostgreSQL)"""
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        try:
+            if email_id:
+                cursor.execute('''
+                    DELETE FROM user_email_analysis 
+                    WHERE user_id = %s AND email_id = %s
+                ''', (user_id, email_id))
+            else:
+                cursor.execute('''
+                    DELETE FROM user_email_analysis 
+                    WHERE user_id = %s
+                ''', (user_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error clearing email analysis: {e}")
+            return False
         finally:
             conn.close()
 
