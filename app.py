@@ -273,6 +273,12 @@ def signup():
             flash('Password must be at least 8 characters long', 'error')
             return render_template('auth/signup.html')
         
+        # Check if user already exists
+        existing_user = user_model.get_user_by_email(email)
+        if existing_user:
+            flash('An account with this email already exists. Please log in instead.', 'error')
+            return render_template('auth/signup.html')
+        
         # Create user
         user_id = user_model.create_user(email, password, first_name, last_name)
         if user_id:
