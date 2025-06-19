@@ -614,12 +614,12 @@ def dashboard():
         if user and user.get('gmail_email'):
             session['gmail_email'] = user['gmail_email']
         
-        # Get today's emails
-        print("📧 Fetching today's emails...")
+        # Get today's emails + recent unattended
+        print("📧 Fetching today's and recent unattended emails...")
         plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
         print(f"🔍 [DEBUG] User plan for email fetching: {plan}")
-        emails = gmail_service.get_todays_emails(max_results=50, user_plan=plan)
-        print(f"📧 Found {len(emails)} emails for today")
+        emails = gmail_service.get_recent_and_unattended_emails(max_results=50, user_plan=plan, days=3)
+        print(f"📧 Found {len(emails)} emails for today + recent unattended")
         
         # Get user's email filters
         user_filters = user_model.get_email_filters(user_id)

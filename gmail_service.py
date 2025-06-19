@@ -669,4 +669,59 @@ class GmailService:
         """Clear credentials without removing token file (for temporary disconnection)"""
         self.credentials = None
         self.service = None
-        print("✅ Gmail credentials cleared") 
+        print("✅ Gmail credentials cleared")
+    
+    def get_recent_and_unattended_emails(self, max_results=50, user_plan='free', days=3):
+        """Get today's emails plus any unread emails from the last N days (default 3)."""
+        try:
+            service = self._get_service()
+            # Apply subscription-based limits
+            if user_plan == 'free':
+                effective_max_results = min(max_results, 10)
+            else:
+                effective_max_results = max_results
+            today = datetime.now().date()
+            start_date = (today - timedelta(days=days-1)).strftime('%Y/%m/%d')
+            end_date = (today + timedelta(days=1)).strftime('%Y/%m/%d')
+            # 1. Fetch all emails from the last N days
+            query_recent = f'after:{start_date} before:{end_date}'
+            results_recent = service.users().messages().list(
+                userId='me',
+                q=query_recent,
+                maxResults=effective_max_results
+            ).execute()
+            messages_recent = results_recent.get('messages', [])
+            # 2. Fetch unread emails from the last N days
+            query_unread = f'is:unread after:{start_date} before:{end_date}'
+            results_unread = service.users().messages().list(
+                userId='me',
+                q=query_unread,
+                maxResults=effective_max_results
+            ).execute()
+            messages_unread = results_unread.get('messages', [])
+            # Combine and deduplicate by message ID
+            all_ids = set()
+            all_messages = []
+            for m in (messages_recent or []) + (messages_unread or []):
+                if m['id'] not in all_ids:
+                    all_ids.add(m['id'])
+                    all_messages.append(m)
+            # Get full email details
+            emails = []
+            for message in all_messages:
+                try:
+                    email_data = service.users().messages().get(
+                        userId='me',
+                        id=message['id'],
+                        format='full'
+                    ).execute()
+                    parsed_email = self._parse_email(email_data)
+                    if parsed_email:
+                        emails.append(parsed_email)
+                except HttpError as error:
+                    print(f'Error getting email {message["id"]}: {error}')
+                    continue
+            return emails
+        except HttpError as error:
+            print(f'Gmail API error: {error}')
+            raise 
