@@ -6,7 +6,7 @@ Run this on your Digital Ocean app console or via SSH
 
 import os
 import sys
-from models_postgresql import DatabaseManager
+from models_postgresql import DatabaseManager, User
 
 def set_user_as_admin(email):
     """Set a user as admin by email"""
@@ -18,10 +18,11 @@ def set_user_as_admin(email):
             return False
         
         print(f"🔧 Connecting to Digital Ocean database...")
-        db = DatabaseManager()
+        db_manager = DatabaseManager()
+        user_model = User(db_manager)
         
         # Get user ID from email
-        with db.get_connection() as conn:
+        with db_manager.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, email FROM users WHERE email = %s", (email,))
                 result = cur.fetchone()
@@ -33,7 +34,7 @@ def set_user_as_admin(email):
                 print(f"✅ Found user: {user_email} (ID: {user_id})")
                 
         # Set user as admin
-        success = db.set_user_admin(user_id, True)
+        success = user_model.set_user_admin(user_id, True)
         if success:
             print(f"✅ Successfully set {email} as admin")
             print(f"🔄 Please log out and log back in to activate admin privileges")
@@ -49,8 +50,8 @@ def set_user_as_admin(email):
 def list_users():
     """List all users in the database"""
     try:
-        db = DatabaseManager()
-        with db.get_connection() as conn:
+        db_manager = DatabaseManager()
+        with db_manager.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id, email, is_admin FROM users ORDER BY created_at DESC")
                 users = cur.fetchall()
