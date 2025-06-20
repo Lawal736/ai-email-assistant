@@ -1,59 +1,157 @@
-# AI-Powered Email Assistant Web App
+# AI Email Assistant
 
-A comprehensive email management platform that integrates Gmail API, AI analysis, and payment processing to help users efficiently manage their email communications.
+[![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-2.x-black?style=for-the-badge&logo=flask)](https://flask.palletsprojects.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14-blue?style=for-the-badge&logo=postgresql)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-20.10+-blue?style=for-the-badge&logo=docker)](https://www.docker.com/)
+[![DigitalOcean](https://img.shields.io/badge/Deploy-DigitalOcean-blueviolet?style=for-the-badge&logo=digitalocean)](https://www.digitalocean.com/products/app-platform)
 
-## 🚀 Features
+A sophisticated, AI-powered email management platform designed to streamline your inbox. This application connects seamlessly with your Gmail account, provides intelligent email analysis, and offers a multi-tiered subscription model with secure payment processing.
 
-### Core Email Management
-- **Gmail Integration**: Seamless OAuth2 authentication with Gmail API
-- **Email Analysis**: AI-powered analysis of email content, sentiment, and priority
-- **Smart Filtering**: Automatic filtering of social media, automated, and promotional emails
-- **Email Threading**: Intelligent grouping of related emails into conversation threads
-- **Daily Summaries**: Automated daily email summaries with key insights
+## ✨ Core Features
 
-### AI-Powered Features
-- **Advanced AI Analysis**: Deep analysis of email content using GPT-4 and Claude models
-- **Action Item Extraction**: Automatic identification and extraction of action items from emails
-- **Response Recommendations**: AI-generated response suggestions for emails
-- **Custom Insights**: Pro users can create custom analysis criteria for specific email patterns
-- **Document Processing**: AI-powered analysis of email attachments (PDFs, Excel files, etc.)
+### 👤 User & Account Management
+- **Authentication**: Secure user signup, login, and password reset.
+- **Google OAuth**: Seamlessly connect your Gmail account with a single click.
+- **Account Dashboard**: A personal dashboard to view email summaries, manage settings, and track usage.
+- **Subscription Tiers**: Multiple plans (e.g., Free, Pro, Enterprise) with feature gating.
+- **Billing Portal**: View payment history and manage your subscription.
 
-### Subscription Management
-- **Multi-Tier Plans**: Free, Pro, and Enterprise subscription levels
-- **Flexible Billing**: Monthly and annual billing options
-- **Payment Processing**: Integrated Paystack payment gateway with multi-currency support
-- **Subscription Features**: Feature gating based on subscription levels
-- **Billing History**: Complete payment and subscription history tracking
+### 📧 Email Intelligence
+- **AI-Powered Summaries**: Automatically generate concise summaries of long emails and threads.
+- **Priority Detection**: Intelligent algorithms to identify and flag important emails.
+- **Action Item Extraction**: Pulls out key tasks and deadlines from email content.
+- **Document Analysis**: Process and analyze content from attached documents (PDFs, DOCX).
+- **VIP Senders**: Automatically identify and manage emails from your most important contacts.
 
-### User Experience
-- **Modern UI**: Clean, responsive design with Bootstrap 5
-- **Real-time Updates**: Live email processing and analysis
-- **Account Management**: Comprehensive user profile and settings management
-- **Gmail Account Linking**: Easy connection and disconnection of Gmail accounts
-- **Currency Support**: Multi-currency support with automatic exchange rate updates
+### 💳 Payments & Subscriptions
+- **Multi-Gateway Support**: Integrated with **Paystack** for traditional payments and supports **Cryptocurrency** payments.
+- **Multi-Currency**: Fetches real-time exchange rates and supports transactions in multiple currencies.
+- **Secure Webhooks**: Robust webhook handling for reliable payment status updates.
 
-## 🛠️ Technical Stack
+### 🛡️ Admin Dashboard & Management
+- **Analytics Dashboard**: At-a-glance view of key metrics: total users, active subscriptions, and database health.
+- **User Management**: A comprehensive interface to **view, edit, delete, and search** for users, with full pagination.
+- **Database Tools**: Interface for managing and monitoring the database.
+- **System Logs**: View application logs directly from the admin panel.
+- **Secure Access**: The admin panel is protected and accessible only to authorized administrators.
 
-### Backend
-- **Framework**: Flask (Python)
-- **Database**: SQLite with SQLAlchemy ORM
-- **AI Services**: OpenAI GPT-4, Anthropic Claude (Sonnet, Haiku)
-- **Email API**: Gmail API v1
-- **Payment**: Paystack integration
-- **Authentication**: Session-based with OAuth2 for Gmail
+## 🛠️ Technology Stack
 
-### Frontend
-- **Framework**: Bootstrap 5
-- **JavaScript**: Vanilla JS with AJAX
-- **Templates**: Jinja2 templating engine
-- **Styling**: Custom CSS with responsive design
+| Category      | Technology                                    |
+|---------------|-----------------------------------------------|
+| **Backend**   | Python, Flask, Gunicorn                       |
+| **Database**  | PostgreSQL (Production), SQLite (Development) |
+| **Frontend**  | HTML, CSS, JavaScript, Bootstrap 5, Jinja2    |
+| **AI Services** | OpenAI, Anthropic (configurable)              |
+| **Payments**  | Paystack, Web3 (for Crypto)                   |
+| **APIs**      | Google (Gmail API), Exchange Rate APIs        |
+| **Deployment**| Docker, DigitalOcean App Platform             |
 
-### External Services
-- **Gmail API**: Email access and management
-- **OpenAI API**: GPT-4 for advanced analysis
-- **Anthropic API**: Claude models for efficient processing
-- **Paystack**: Payment processing and webhooks
-- **Exchange Rate API**: Real-time currency conversion
+## 🚀 Getting Started
+
+Follow these instructions to set up the project for local development.
+
+### 1. Prerequisites
+- Python 3.11+
+- Docker & Docker Compose
+- A Google Cloud project with OAuth 2.0 credentials (`credentials.json`).
+- API keys for OpenAI, Paystack, etc.
+
+### 2. Clone the Repository
+```bash
+git clone https://github.com/Lawal736/ai-email-assistant.git
+cd ai-email-assistant
+```
+
+### 3. Configure Environment Variables
+Create a `.env` file by copying the example:
+```bash
+cp env_example.txt .env
+```
+Now, edit `.env` and fill in your credentials and API keys.
+
+**Key Variables:**
+- `FLASK_APP=app.py`
+- `FLASK_ENV=development`
+- `SECRET_KEY`: A strong, random secret key.
+- `DATABASE_URL`: Your PostgreSQL connection string (for production/docker setup).
+- `PAYSTACK_SECRET_KEY` & `PAYSTACK_PUBLIC_KEY`
+- `GOOGLE_OAUTH_CLIENT_ID` & `GOOGLE_OAUTH_CLIENT_SECRET`
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+
+### 4. Set Up Google OAuth Credentials
+- Go to the [Google Cloud Console](https://console.cloud.google.com/).
+- Create a new project.
+- Go to "APIs & Services" > "Credentials".
+- Create an "OAuth 2.0 Client ID" for a "Web application".
+- Add `http://127.0.0.1:5001/oauth2callback` to the "Authorized redirect URIs".
+- Download the JSON file, rename it to `credentials.json`, and place it in the project root.
+
+### 5. Running Locally
+
+#### A) With SQLite (Simple)
+This method is best for quick, simple local testing.
+
+1.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  **Run the App:**
+    The application will automatically create and use a `users.db` SQLite file.
+    ```bash
+    flask run
+    ```
+
+#### B) With PostgreSQL (Using Docker)
+This method mirrors the production environment and is recommended for most development work.
+
+1.  **Build and Run with Docker Compose:**
+    Ensure your `.env` file has the `DATABASE_URL` correctly configured to point to the `db` service.
+    ```
+    # Example DATABASE_URL for Docker Compose
+    DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+    ```
+    ```bash
+    docker-compose up --build
+    ```
+This command will build the Flask application image, start a PostgreSQL container, and run the app, connecting it to the database.
+
+## 🌐 Deployment
+
+This application is configured for easy deployment on the **DigitalOcean App Platform**.
+
+1.  **Push to GitHub**: Make sure your repository is up-to-date.
+2.  **Create App on DigitalOcean**:
+    - Select your GitHub repository.
+    - DigitalOcean will auto-detect the `Dockerfile` and set up a web service.
+3.  **Add a Database**:
+    - In the "Resources" tab of your app, add a PostgreSQL managed database.
+    - DigitalOcean will automatically provide the `DATABASE_URL` as an environment variable, which the application is configured to use.
+4.  **Set Environment Variables**:
+    - In the App Settings, add all the necessary environment variables from your `.env` file (`SECRET_KEY`, API keys, etc.).
+    - Ensure you set `FLASK_ENV=production`.
+5.  **Deploy**:
+    - Trigger a manual deployment or push a new commit to your main branch. DigitalOcean will automatically build the Docker image and deploy the application.
+
+## ⚙️ Project Structure
+```
+.
+├── app.py                  # Main Flask application logic and routes
+├── models.py               # SQLite models and database logic
+├── models_postgresql.py    # PostgreSQL models and database logic
+├── gmail_service.py        # Handles all Google API interactions
+├── ai_service.py           # Logic for AI model interactions
+├── payment_service.py      # Paystack and Crypto payment processing
+├── Dockerfile              # Instructions to build the production Docker image
+├── docker-compose.yml      # Defines services for local development (app + db)
+├── requirements.txt        # Python package dependencies
+├── deploy.sh               # Deployment script for DigitalOcean
+├── templates/              # Jinja2 HTML templates
+│   ├── admin/              # Templates for the Admin Dashboard
+│   └── ...
+└── static/                 # CSS, JavaScript, and image assets
+```
 
 ## 📋 Recent Updates & Improvements
 
