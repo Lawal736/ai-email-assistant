@@ -637,6 +637,9 @@ def dashboard():
         if user and user.get('gmail_email'):
             session['gmail_email'] = user['gmail_email']
         
+        # Import datetime at the top of the function to avoid scope issues
+        from datetime import datetime, timedelta
+        
         # Smart refresh logic - check if emails need refreshing
         last_refresh = session.get('last_email_refresh')
         should_refresh = True
@@ -646,7 +649,6 @@ def dashboard():
             print("📧 Force refresh requested via URL parameter")
             should_refresh = True
         elif last_refresh:
-            from datetime import datetime, timedelta
             time_since_refresh = datetime.now() - last_refresh
             if time_since_refresh < timedelta(minutes=5):  # Refresh every 5 minutes
                 should_refresh = False
