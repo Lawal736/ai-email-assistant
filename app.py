@@ -10,6 +10,7 @@ from gmail_service import GmailService
 from ai_service import HybridAIService
 from email_processor import EmailProcessor
 from document_processor import DocumentProcessor
+from googleapiclient.errors import HttpError
 from models import DatabaseManager, User, SubscriptionPlan, PaymentRecord
 from payment_service import PaymentService
 from currency_service import currency_service
@@ -636,12 +637,36 @@ def dashboard():
         if user and user.get('gmail_email'):
             session['gmail_email'] = user['gmail_email']
         
-        # Get today's emails + recent unattended
-        print("📧 Fetching today's and recent unattended emails...")
-        plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
-        print(f"🔍 [DEBUG] User plan for email fetching: {plan}")
-        emails = gmail_service.get_recent_and_unattended_emails(max_results=50, user_plan=plan, days=2)
-        print(f"📧 Found {len(emails)} emails for today + recent unattended")
+        # Smart refresh logic - check if emails need refreshing
+        last_refresh = session.get('last_email_refresh')
+        should_refresh = True
+        
+        # Force refresh if refresh parameter is present
+        if request.args.get('refresh'):
+            print("📧 Force refresh requested via URL parameter")
+            should_refresh = True
+        elif last_refresh:
+            from datetime import datetime, timedelta
+            time_since_refresh = datetime.now() - last_refresh
+            if time_since_refresh < timedelta(minutes=5):  # Refresh every 5 minutes
+                should_refresh = False
+                print(f"📧 Using cached emails (refreshed {time_since_refresh.seconds} seconds ago)")
+        
+        if should_refresh:
+            print("📧 Fetching fresh emails from Gmail...")
+            plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
+            print(f"🔍 [DEBUG] User plan for email fetching: {plan}")
+            emails = gmail_service.get_recent_and_unattended_emails(max_results=50, user_plan=plan, days=2)
+            print(f"📧 Found {len(emails)} fresh emails")
+            session['last_email_refresh'] = datetime.now()
+        else:
+            # Use cached emails from session if available
+            emails = session.get('cached_emails', [])
+            if not emails:
+                print("📧 No cached emails, fetching fresh...")
+                plan = session.get('subscription_plan', user.get('subscription_plan', 'free'))
+                emails = gmail_service.get_recent_and_unattended_emails(max_results=50, user_plan=plan, days=2)
+                session['last_email_refresh'] = datetime.now()
         
         # Get user's email filters
         user_filters = user_model.get_email_filters(user_id)
@@ -682,6 +707,9 @@ def dashboard():
         
         # Get current date
         current_date = datetime.now().strftime('%B %d, %Y')
+        
+        # Cache processed emails for smart refresh
+        session['cached_emails'] = processed_emails
         
         # Group emails by date for display
         grouped_emails = {'Today': [], 'Yesterday': [], 'Earlier': []}
@@ -2258,11 +2286,26 @@ def api_analyze_email():
             return jsonify({'error': 'Email ID is required'}), 400
         print(f'STEP 9: Fetching email {email_id}')
         service = gmail_service._get_service()
-        email_data = service.users().messages().get(
-            userId='me',
-            id=email_id,
-            format='full'
-        ).execute()
+        try:
+            email_data = service.users().messages().get(
+                userId='me',
+                id=email_id,
+                format='full'
+            ).execute()
+        except HttpError as e:
+            if e.resp.status == 404:
+                print(f"❌ [DEBUG] Email {email_id} not found in Gmail (likely deleted/moved)")
+                return jsonify({
+                    'success': False, 
+                    'error': 'Email not available, please refresh',
+                    'error_code': 'EMAIL_NOT_FOUND',
+                    'debug': {
+                        'email_id': email_id,
+                        'gmail_error': 'Message not found'
+                    }
+                }), 404
+            else:
+                raise e
         print('STEP 10: Parsing email')
         parsed_email = gmail_service._parse_email(email_data)
         if not parsed_email:
@@ -2670,11 +2713,26 @@ def api_enhanced_email_analysis():
         
         # Get email data
         service = gmail_service._get_service()
-        email_data = service.users().messages().get(
-            userId='me',
-            id=email_id,
-            format='full'
-        ).execute()
+        try:
+            email_data = service.users().messages().get(
+                userId='me',
+                id=email_id,
+                format='full'
+            ).execute()
+        except HttpError as e:
+            if e.resp.status == 404:
+                print(f"❌ [DEBUG] Email {email_id} not found in Gmail (likely deleted/moved)")
+                return jsonify({
+                    'success': False, 
+                    'error': 'Email not available, please refresh',
+                    'error_code': 'EMAIL_NOT_FOUND',
+                    'debug': {
+                        'email_id': email_id,
+                        'gmail_error': 'Message not found'
+                    }
+                }), 404
+            else:
+                raise e
         
         parsed_email = gmail_service._parse_email(email_data)
         if not parsed_email:
@@ -3362,11 +3420,26 @@ def api_generate_response():
         # Fetch the email
         print(f"🔍 [DEBUG] Fetching email with ID: {email_id}")
         service = gmail_service._get_service()
-        email_data = service.users().messages().get(
-            userId='me',
-            id=email_id,
-            format='full'
-        ).execute()
+        try:
+            email_data = service.users().messages().get(
+                userId='me',
+                id=email_id,
+                format='full'
+            ).execute()
+        except HttpError as e:
+            if e.resp.status == 404:
+                print(f"❌ [DEBUG] Email {email_id} not found in Gmail (likely deleted/moved)")
+                return jsonify({
+                    'success': False, 
+                    'error': 'Email not available, please refresh',
+                    'error_code': 'EMAIL_NOT_FOUND',
+                    'debug': {
+                        'email_id': email_id,
+                        'gmail_error': 'Message not found'
+                    }
+                }), 404
+            else:
+                raise e
         
         print(f"🔍 [DEBUG] Email data fetched, parsing...")
         parsed_email = gmail_service._parse_email(email_data)
